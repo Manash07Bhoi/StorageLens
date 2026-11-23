@@ -6,6 +6,11 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [1.0.0] — 2026-11-23
 
+### Release notes
+
+Published as **StorageLens** (public, MIT): https://github.com/Manash07Bhoi/StorageLens — docs-only release hygiene pass (canonical MIT text; host-specific paths scrubbed from recon/performance docs; README gained repository and status sections; SECURITY.md added). No scanner/report behavior changed.
+
+
 Initial V1 implementation of the Android Storage Audit, developed against
 the master specification (`uploads/Android_Storage_Audit_Arena_Master_Prompt.md`)
 and the validation supplement (`uploads/Android_Storage_Audit_V1_Gap_Analysis_Validation_Supplement.md`).

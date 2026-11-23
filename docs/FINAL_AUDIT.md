@@ -159,3 +159,25 @@ mobile/a11y verified manually only. On-device acceptance steps are in
 - [x] known limitations and unresolved gap register (`GAP_REGISTER.md`, `LIMITATIONS.md`)
 - [x] exact Termux first-run instructions (`README.md`, `ANDROID_TERMUX_GUIDE.md`)
 - [x] clear statement distinguishing remote fixture validation from real-device validation (this file, §13.16; `TEST_EVIDENCE.md` honesty note; README "Validation status")
+
+---
+
+## Public release addendum (2026-11-23)
+
+- Repository: https://github.com/Manash07Bhoi/StorageLens — created public
+  on 2026-11-23; MIT license (SPDX-detected); default branch `main`;
+  topics set (android, termux, storage, audit, inventory, read-only,
+  offline-first, sqlite, html-report, python).
+- Pre-push hygiene: 48 staged files scanned — no token/credential material,
+  no local databases, no scan exports/reports, no `__pycache__`/build
+  artifacts, no personal filesystem data; `.gitignore` narrows `output/` to
+  `output/README.md` only; remote URL carries no credentials (token used
+  only via per-call credential helper; `.git/config` contains no token).
+- Post-create verification via GitHub API: repository public, description
+  set, `main` HEAD matches the pushed release commit, 48 files in the
+  remote tree, all required files present, no forbidden file types.
+- This addendum changes documentation only; no code paths modified after
+  the final `Ran 110 tests … OK` run.
+
+**Final wording (unchanged): V1 implementation complete; on-device
+validation pending.**
