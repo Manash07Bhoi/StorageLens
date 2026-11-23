@@ -1,0 +1,2 @@
+# Standard library only — no third-party runtime dependencies (by design).
+# This file exists for tools that expect it; it intentionally lists nothing.

@@ -1,0 +1,41 @@
+# Android Storage Audit V1 — packaging metadata.
+# Runtime has NO dependencies beyond the Python 3 standard library.
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "android-storage-audit"
+version = "1.0.0"
+description = "Read-only, local inventory and audit of accessible shared internal storage for Termux on Android. No network access, no root, no file modifications."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [
+    { name = "Android Storage Audit contributors" },
+]
+keywords = ["android", "termux", "storage", "audit", "inventory", "read-only"]
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: System :: Filesystems",
+    "Topic :: Utilities",
+]
+# No runtime dependencies — stdlib only, by design (spec §1.3).
+dependencies = []
+
+# No [project.urls] section: no public repository or documentation URL exists
+# for this project yet, and none is invented.
+
+[project.scripts]
+storage-audit = "storage_audit.cli:main"
+
+[tool.setuptools]
+packages = ["storage_audit"]
+
+[tool.setuptools.package-data]
+storage_audit = ["report_templates/*"]
+
