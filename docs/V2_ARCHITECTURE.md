@@ -10,33 +10,46 @@ unchanged in behavior. Shared pieces: `database.connect/migrate`, `config`,
 ```
 storage_audit/organizer/
 ├── __init__.py      package exports
-├── planner.py       build_plan(): scan run → DRAFT plan (no file writes)
+├── scope.py         org-scope-1: validate_scope(), walk_eligible(),
+│                    op_path_check() — the default-deny boundary
+├── planner.py       build_plan(): ONE explicitly selected user-owned
+│                    folder → DRAFT plan (lstat walk; no file writes)
 ├── executor.py      approve_plan(), apply_plan(), undo_operation(),
 │                    reconcile_interrupted(), cancel_plan()
 └── preview.py       render_plan_preview() / write_plan_preview()
-                     (offline, premium dark, escaped, atomic replace)
+                     (offline, premium dark, escaped, atomic replace,
+                      with the organization-scope panel)
 ```
 
 ## Data flow
 ```
-scan_runs/entries (V1)
-      │  read (kind='file', stat_status='ok', NOT is_symlink)
+ONE explicitly selected, user-owned folder ─── USER SELECTION (mandatory)
+      │  org-scope-1 validate_scope() — default-deny (Android/, system,
+      │  Termux-private, hidden, reserved, cross-boundary, symlink escape)
       ▼
-planner ──► organization_plans (status=draft)
-            organization_operations (status=planned | conflict)
-            organization_events (plan_created, skipped_source…)
-      │  user reviews (organize-show / organize-history / organize-preview)
+walk_eligible() ─── fresh lstat walk OF THE SCOPE ONLY; exclusions recorded
+      │             (Android/ hidden/reserved/boundary pruned at EVERY level)
+      ▼
+planner ──► organization_plans (status=draft; scope manifest columns)
+            organization_operations (planned | conflict; sources & dests
+                                    both inside the scope)
+            organization_events (plan_created, skipped_source with reasons…)
+      │  user reviews (organize-show / organize-history / organize-preview
+      │  — preview renders the scope panel: selection, validation, exclusions)
       ▼
 organize-approve ──► plan.status = approved (explicit, logged)
       ▼
-organize-apply ──► per op: re-validate (exists, not symlink,
-      dest free, dest inside target, free space ≥ payload+64MiB)
-        → copy 1 MiB chunks → fsync → verify (size+mtime | size+SHA-256)
-        → [move only + --acknowledge-source-removal] os.remove(src)
-        → op.status = completed | failed | interrupted
+organize-apply ──► revalidate_plan_scope() — full re-validation; refusal
+      │            journalled; NOTHING runs on failure
+      │            per op: op_path_check() (src+dst in scope, unprohibited,
+      │            not symlink) + re-validate (exists, dst free, dest
+      │            contained, free space ≥ payload+64MiB)
+      │            → copy 1 MiB chunks → fsync → verify (size+mtime | size+SHA-256)
+      │            → [move only + --acknowledge-source-removal] os.remove(src)
+      │            → op.status = completed | failed | interrupted
       ▼
-organize-undo ──► move: dst→src (rename | copy-verify-delete fallback)
-                  copy-keep: --approve-delete required; dest size re-checked
+organize-undo ──► same scope revalidation; move: dst→src (rename |
+                  copy-verify-delete fallback); copy-keep: --approve-delete
 ```
 
 ## Invariants (code-enforced)
@@ -45,12 +58,15 @@ organize-undo ──► move: dst→src (rename | copy-verify-delete fallback)
 3. Destination never overwritten (plan-time reservation + lexists re-check).
 4. Source removed only after destination verified (size+mtime or SHA-256).
 5. Symlinks refused at plan and apply time; never followed.
-6. Destinations realpath-contained in target root (re-checked at apply).
+6. Destinations realpath-contained in the approved scope (re-checked at
+   apply, per operation, and at undo).
 7. Moves crossing filesystems are copy→verify→remove, never rename() alone.
 8. Every transition journalled (`organization_events`), plans and ops.
 9. `in_progress` at restart → reconciled to `interrupted`; never trusted.
 10. Dry-run is the default: `organize-plan` writes only DB rows; the user
     creates the HTML preview explicitly.
+11. Sources and destinations BOTH stay inside the approved scope; the scope
+    is revalidated before apply and before undo (org-scope-1, G11–G13).
 
 ## Deliberate non-goals of M1
 No recommendation engine, no dedup, no native UI, no background worker, no

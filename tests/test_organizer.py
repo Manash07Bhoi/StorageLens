@@ -18,6 +18,8 @@ from storage_audit import database
 from storage_audit.scanner import run_scan, make_cancel_event
 from storage_audit import organizer
 from storage_audit.organizer import executor
+from storage_audit.organizer import scope as scope_mod
+from storage_audit import classifier
 
 
 class OrganizerTestCase(unittest.TestCase):
@@ -27,10 +29,14 @@ class OrganizerTestCase(unittest.TestCase):
         build_rich_fixture(self.fixture)
         self.db = os.path.join(self.tmp, "test.sqlite3")
         self.out = os.path.join(self.tmp, "out")
-        self.target = os.path.join(self.tmp, "Organized")
+        # Under org-scope-1 the organization scope is the selected folder
+        # itself: operations stay inside it. Use the synthetic fixture as the
+        # user-owned folder to organize (never real user data).
+        self.target = self.fixture
         result = run_scan(self.fixture, db_path=self.db, output_dir=self.out,
                           progress=False)
         self.scan_id = result["run_id"]
+        self._scope_snapshot = sorted(os.listdir(self.fixture))
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
@@ -75,9 +81,13 @@ class TestMigrationToV2(OrganizerTestCase):
             conn.execute("SELECT id FROM organization_operations LIMIT 1")
             conn.execute("SELECT id FROM organization_events LIMIT 1")
             v = conn.execute("PRAGMA user_version").fetchone()[0]
+            mig = [r[0] for r in conn.execute(
+                "SELECT version FROM schema_migrations ORDER BY version")]
         finally:
             conn.close()
         self.assertEqual(v, database.SCHEMA_VERSION)
+        self.assertEqual(v, 3)
+        self.assertEqual(mig, [1, 2, 3])
 
     def test_v1_database_migrates_and_preserves_data(self):
         # Build a v1-shaped database by hand, then migrate.
@@ -114,16 +124,12 @@ class TestPlanner(OrganizerTestCase):
         plan_id, stats = self.make_plan()
         self.assertGreater(stats["operations"], 0)
         ops = self.plan_ops(plan_id)
-        conn = self.conn()
-        try:
-            file_count = conn.execute(
-                "SELECT COUNT(*) FROM entries"
-                " WHERE scan_id = ? AND kind='file' AND stat_status='ok'",
-                (self.scan_id,)).fetchone()[0]
-        finally:
-            conn.close()
-        self.assertEqual(len(ops), file_count)
-        plan = conn_plan = None
+        self.assertEqual(len(ops), stats["operations"])
+        expected_eligible = len(scope_mod.walk_eligible(
+            os.path.realpath(self.target))[0])
+        self.assertEqual(stats["eligible_files"], expected_eligible)
+        # ops + (skips that consumed an eligible file) == eligible files
+        self.assertLessEqual(stats["operations"], stats["eligible_files"])
         conn = self.conn()
         try:
             plan = conn.execute("SELECT * FROM organization_plans WHERE id = ?",
@@ -132,11 +138,18 @@ class TestPlanner(OrganizerTestCase):
             conn.close()
         self.assertEqual(plan["status"], "draft")
         self.assertEqual(plan["action"], "copy-keep")
-        # every destination is inside the target root
+        self.assertEqual(plan["scope_policy_version"], "org-scope-1")
+        self.assertEqual(plan["scope_canonical"],
+                         os.path.realpath(self.target))
+        self.assertGreaterEqual(plan["excluded_entries"], 1)  # hidden + links
+        # every destination is inside the approved scope
+        scope = os.path.realpath(self.target)
         for op in ops:
-            self.assertTrue(os.path.realpath(op["dest_abs"]).startswith(
-                os.path.realpath(self.target) + os.sep) or
-                os.path.realpath(op["dest_abs"]) == os.path.realpath(self.target))
+            dest = os.path.realpath(op["dest_abs"])
+            self.assertTrue(dest == scope or dest.startswith(scope + os.sep))
+            # and every source is inside the scope too
+            src = os.path.realpath(op["source_abs"])
+            self.assertTrue(src == scope or src.startswith(scope + os.sep))
 
     def test_category_folders_and_unsorted(self):
         plan_id, _ = self.make_plan()
@@ -150,50 +163,54 @@ class TestPlanner(OrganizerTestCase):
         self.assertTrue(any(n.endswith(".jpg") or n.endswith(".JPG") for n in names))
 
     def test_symlinks_are_never_planned(self):
-        link = os.path.join(self.fixture, "linked_file.txt")
-        if not os.path.islink(link):
-            os.symlink("README", link)
-        result = run_scan(self.fixture, db_path=self.db, output_dir=self.out,
-                          progress=False)
+        plan_id, stats = self.make_plan()
+        ops = self.plan_ops(plan_id)
+        names = [o["source_rel"] for o in ops]
+        # fixture symlinks live in Download/ and point elsewhere/broken
+        self.assertNotIn(os.path.join("Download", "report_link.txt"), names)
+        self.assertNotIn(os.path.join("Download", "docs_dir_link"), names)
+        self.assertNotIn(os.path.join("Download", "broken_link"), names)
+        # excluded with an explicit reason, never followed
         conn = self.conn()
         try:
-            plan_id, _ = organizer.build_plan(conn, result["run_id"], self.target)
-            ops = [dict(r) for r in conn.execute(
-                "SELECT source_rel FROM organization_operations"
-                " WHERE plan_id = ?", (plan_id,)).fetchall()]
+            events = [r[0] for r in conn.execute(
+                "SELECT detail FROM organization_events"
+                " WHERE plan_id = ? AND event = 'skipped_source'", (plan_id,))]
         finally:
             conn.close()
-        self.assertNotIn("linked_file.txt", [o["source_rel"] for o in ops])
+        self.assertTrue(any("symlink" in e for e in events))
 
     def test_filesystem_root_target_refused(self):
         conn = self.conn()
         try:
-            with self.assertRaises(organizer.PlanError):
+            with self.assertRaises(organizer.ScopeRejected):
                 organizer.build_plan(conn, self.scan_id, "/")
         finally:
             conn.close()
 
-    def test_malicious_stored_path_stays_contained(self):
+    def test_malicious_stored_dest_outside_scope_is_refused_at_apply(self):
+        plan_id, _ = self.make_plan()
+        self.approve(plan_id)
+        outside = os.path.join(self.tmp, "outside.txt")
         conn = self.conn()
         try:
-            conn.execute(
-                "INSERT INTO entries(scan_id, relative_path, absolute_path, name,"
-                " normalized_name, parent_relative_path, depth, kind, category,"
-                " stat_status, observation_epoch, classification_version, device_id)"
-                " VALUES (?, '../../../etc/evil.txt', '/x/evil.txt', 'evil.txt',"
-                " 'evil.txt', '../../..', 3, 'file', 'document', 'ok', 0, '1.0.0', 1)",
-                (self.scan_id,))
-            conn.commit()
-            plan_id, _ = organizer.build_plan(conn, self.scan_id, self.target)
             op = conn.execute(
-                "SELECT dest_rel FROM organization_operations"
-                " WHERE plan_id = ? AND source_rel = '../../../etc/evil.txt'",
-                (plan_id,)).fetchone()
+                "SELECT id FROM organization_operations"
+                " WHERE plan_id = ? ORDER BY seq LIMIT 1", (plan_id,)).fetchone()
+            conn.execute(
+                "UPDATE organization_operations SET dest_abs = ? WHERE id = ?",
+                (outside, op["id"]))
+            conn.commit()
+            result = executor.apply_plan(conn, plan_id)
+            row = conn.execute(
+                "SELECT status, error FROM organization_operations"
+                " WHERE id = ?", (op["id"],)).fetchone()
         finally:
             conn.close()
-        self.assertIsNotNone(op)
-        self.assertFalse(op["dest_rel"].startswith(".."))
-        self.assertNotIn("..", op["dest_rel"].split(os.sep))
+        self.assertEqual(row["status"], "failed")
+        self.assertIn("scope", row["error"] or "")
+        self.assertFalse(os.path.exists(outside))
+        self.assertEqual(result["failed"], 1)
 
     def test_non_completed_scan_refused(self):
         conn = self.conn()
@@ -209,18 +226,19 @@ class TestPlanner(OrganizerTestCase):
     def test_conflict_with_existing_destination_flagged(self):
         # Pre-create one colliding destination: <target>/Documents/... for the
         # first document-like file in the fixture.
-        conn = self.conn()
-        try:
-            row = conn.execute(
-                "SELECT relative_path, category FROM entries"
-                " WHERE scan_id = ? AND kind='file' AND category='document'"
-                " ORDER BY relative_path LIMIT 1", (self.scan_id,)).fetchone()
-        finally:
-            conn.close()
-        self.assertIsNotNone(row)
+        eligible, _ex, _al = scope_mod.walk_eligible(os.path.realpath(self.target))
+        candidate = None
+        for item in eligible:
+            ext, _c, _o = classifier.split_extension(os.path.basename(item["source_rel"]))
+            cat = classifier.classify_extension(ext) if ext else "unknown"
+            if cat == "document":
+                candidate = (item["source_rel"], cat)
+                break
+        self.assertIsNotNone(candidate)
+        rel, cat = candidate
         dest_rel = os.path.normpath(os.path.join(
-            organizer.planner.category_folder(row["category"]),
-            *[p for p in row["relative_path"].replace("\\", "/").split("/")
+            organizer.planner.category_folder(cat),
+            *[p for p in rel.replace("\\", "/").split("/")
               if p not in ("", ".", "..")]))
         dest_abs = os.path.join(self.target, dest_rel)
         os.makedirs(os.path.dirname(dest_abs), exist_ok=True)
@@ -241,7 +259,17 @@ class TestExecutionGating(OrganizerTestCase):
                 executor.apply_plan(conn, plan_id)
         finally:
             conn.close()
-        self.assertFalse(os.path.exists(self.target))
+        # nothing copied/created — scope is exactly as it was at setUp
+        self.assertEqual(sorted(os.listdir(self.target)), self._scope_snapshot)
+        conn = self.conn()
+        try:
+            done = conn.execute(
+                "SELECT COUNT(*) FROM organization_operations"
+                " WHERE plan_id = ? AND status = 'completed'", (plan_id,)
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        self.assertEqual(done, 0)
 
     def test_move_plan_requires_source_removal_ack(self):
         plan_id, _ = self.make_plan(action="move")
@@ -252,7 +280,17 @@ class TestExecutionGating(OrganizerTestCase):
                 executor.apply_plan(conn, plan_id)
         finally:
             conn.close()
-        self.assertFalse(os.path.exists(self.target))  # nothing copied at all
+        # nothing copied/created — scope is exactly as it was at setUp
+        self.assertEqual(sorted(os.listdir(self.target)), self._scope_snapshot)
+        conn = self.conn()
+        try:
+            done = conn.execute(
+                "SELECT COUNT(*) FROM organization_operations"
+                " WHERE plan_id = ? AND status = 'completed'", (plan_id,)
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        self.assertEqual(done, 0)  # nothing copied at all
 
     def test_copy_keep_end_to_end(self):
         plan_id, stats = self.make_plan()
@@ -375,7 +413,17 @@ class TestExecutionGating(OrganizerTestCase):
                     executor.apply_plan(conn, plan_id)
         finally:
             conn.close()
-        self.assertFalse(os.path.exists(self.target))
+        # nothing copied/created — scope is exactly as it was at setUp
+        self.assertEqual(sorted(os.listdir(self.target)), self._scope_snapshot)
+        conn = self.conn()
+        try:
+            done = conn.execute(
+                "SELECT COUNT(*) FROM organization_operations"
+                " WHERE plan_id = ? AND status = 'completed'", (plan_id,)
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        self.assertEqual(done, 0)
 
     def test_reconcile_marks_in_progress_interrupted(self):
         plan_id, _ = self.make_plan()

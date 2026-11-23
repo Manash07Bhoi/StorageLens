@@ -243,6 +243,16 @@ CREATE INDEX IF NOT EXISTS idx_org_events_plan ON organization_events(plan_id);
 CREATE INDEX IF NOT EXISTS idx_org_events_op ON organization_events(operation_id);
 """
 
+SCHEMA_V3_SQL = """
+ALTER TABLE organization_plans ADD COLUMN eligible_files INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE organization_plans ADD COLUMN excluded_entries INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE organization_plans ADD COLUMN scope_policy_version TEXT NOT NULL DEFAULT '';
+ALTER TABLE organization_plans ADD COLUMN scope_canonical TEXT NOT NULL DEFAULT '';
+ALTER TABLE organization_plans ADD COLUMN scope_allowed_json TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE organization_plans ADD COLUMN scope_excluded_json TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE organization_plans ADD COLUMN scope_validation_json TEXT NOT NULL DEFAULT '{}';
+"""
+
 
 _ENTRY_COLUMNS = [
     "scan_id", "relative_path", "absolute_path", "name", "normalized_name",
@@ -297,14 +307,24 @@ def migrate(conn):
                 conn.execute(
                     "INSERT OR IGNORE INTO schema_migrations(version, applied_at)"
                     " VALUES (?, ?)", (2, int(time.time())))
+            if 3 not in applied:
+                conn.executescript(SCHEMA_V3_SQL)
+                conn.execute(
+                    "INSERT OR IGNORE INTO schema_migrations(version, applied_at)"
+                    " VALUES (?, ?)", (3, int(time.time())))
             conn.execute("PRAGMA user_version = {}".format(SCHEMA_VERSION))
-    elif current == 1:
+    elif current in (1, 2):
         with conn:
             if 2 not in applied:
                 conn.executescript(SCHEMA_V2_SQL)
                 conn.execute(
                     "INSERT OR IGNORE INTO schema_migrations(version, applied_at)"
                     " VALUES (?, ?)", (2, int(time.time())))
+            if 3 not in applied:
+                conn.executescript(SCHEMA_V3_SQL)
+                conn.execute(
+                    "INSERT OR IGNORE INTO schema_migrations(version, applied_at)"
+                    " VALUES (?, ?)", (3, int(time.time())))
             conn.execute("PRAGMA user_version = {}".format(SCHEMA_VERSION))
     return conn.execute("PRAGMA user_version").fetchone()[0]
 

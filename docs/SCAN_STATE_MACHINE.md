@@ -44,5 +44,5 @@ fail while the scan stays `completed`. A report built from
 ## Test evidence
 Gating/lifecycle/recovery: tests/test_database.py (transitions, immutability,
 stale recovery, integrity), tests/test_scanner.py (cancel, vanish, permission,
-incomplete labelling). 136 tests pass on the dev host; on-device execution is
+incomplete labelling). 157 tests pass on the dev host; on-device execution is
 NOT TESTED (see device gate).

@@ -51,7 +51,7 @@ means: what Termux can see, not the whole device.
 ## 3. Commands tested and environment used
 
 **Tested environment:** Linux x86_64 (development container), Python 3.13.18,
-`python3 -m unittest discover -s tests` → 136 tests OK. The pipeline below
+`python3 -m unittest discover -s tests` → 157 tests OK. The pipeline below
 (`check`, `scan`, `report`) was executed against synthetic fixtures and a
 1 GiB sparse-file fixture on that host.
 

@@ -42,7 +42,7 @@ class TestSchema(unittest.TestCase):
             self.assertEqual(version, database.SCHEMA_VERSION)
             applied = conn.execute(
                 "SELECT version FROM schema_migrations").fetchall()
-            self.assertEqual([row[0] for row in applied], [1, 2])
+            self.assertEqual([row[0] for row in applied], [1, 2, 3])
             conn.close()
 
     def test_migration_is_idempotent(self):
@@ -50,7 +50,7 @@ class TestSchema(unittest.TestCase):
             conn, _ = _fresh_db(td)
             database.migrate(conn)  # second run must not fail or duplicate
             rows = conn.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0]
-            self.assertEqual(rows, 2)
+            self.assertEqual(rows, 3)
             conn.close()
 
     def test_foreign_keys_enabled(self):

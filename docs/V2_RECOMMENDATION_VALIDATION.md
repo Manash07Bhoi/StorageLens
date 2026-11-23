@@ -1,6 +1,6 @@
 # V2 Recommendation Validation (what V2 may and may NOT claim)
 
-## Delivered (v2.0.0): no recommendation engine. By design.
+## Delivered (v2.1.0): no recommendation engine. By design.
 M1 ships mechanics (plan/approve/apply/undo), not opinions. The only heuristic
 shipped as a report page is V1's "Review Candidates" — neutral observations
 with explicit labels. V2 adds nothing that labels user content as junk.

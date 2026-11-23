@@ -10,10 +10,19 @@ Invariants (every one is enforced here and covered by tests):
 4. No source is removed before the destination copy is verified
    (size + mtime, or size + SHA-256 when the plan requested it).
 5. Symlinks are never copied, moved, read or followed.
-6. Destinations must resolve inside the plan's target root.
+6. Destinations (and sources) must resolve inside the plan's approved
+   organization scope — revalidated at apply time, per operation.
 7. Every step is journalled in organization_events.
 8. Interrupted operations are marked ``interrupted`` on the next call —
    never silently treated as complete.
+9. org-scope-1: before ANY operation is executed, the plan's scope is
+   revalidated from scratch (existence, directory-ness, symlink escape,
+   Android/hidden/reserved components, mount boundary, too-broad roots). If
+   scope validity changed since the plan was approved, NOTHING is executed.
+   Each operation additionally revalidates its own source and destination
+   (inside scope, no prohibited components, not a symlink) at execution time.
+10. Undo revalidates the same scope before restoring anything. Recovery can
+    never widen the approved scope.
 """
 
 import hashlib
@@ -21,6 +30,8 @@ import os
 import shutil
 import sqlite3
 import time
+
+from .scope import SCOPE_POLICY_VERSION, validate_scope, op_path_check
 
 _COPY_CHUNK = 1024 * 1024  # 1 MiB — bounded memory
 
@@ -73,6 +84,34 @@ def reconcile_interrupted(conn, plan_id=None):
         _event(conn, row["plan_id"], row["id"], "op_interrupted_recovered",
                "operation was in_progress when reconciled")
     return len(rows)
+
+
+def revalidate_plan_scope(conn, plan):
+    """Re-run org-scope-1 on the plan's target. Returns validation dict.
+
+    Raises ExecutionError when the approved scope no longer validates — the
+    apply/undo must then refuse to touch anything. The refusal is journalled
+    when a connection is supplied.
+    """
+    validation = validate_scope(plan["target_root"])
+    reasons = list(validation["reasons"])
+    changed = (validation["canonical"] != plan["target_root"])
+    if not validation["ok"] or changed:
+        if changed:
+            reasons.append("scope changed since approval ({!r} → {!r})".format(
+                plan["target_root"], validation["canonical"]))
+        detail = "; ".join(reasons)
+        if conn is not None:
+            try:
+                _event(conn, plan["id"], None, "scope_revalidation_failed",
+                       detail)
+                conn.commit()
+            except Exception:
+                pass
+        raise ExecutionError(
+            "approved organization scope failed revalidation; refusing to "
+            "execute anything. Reasons: {}".format(detail))
+    return validation
 
 
 def approve_plan(conn, plan_id, note=""):
@@ -147,6 +186,17 @@ def apply_plan(conn, plan_id, *, acknowledge_source_removal=False,
         raise ExecutionError(
             "plan {} is '{}' — approve it first with `organize-approve`".format(
                 plan_id, plan["status"]))
+
+    # --- org-scope-1: full scope revalidation BEFORE any execution ---
+    revalidate_plan_scope(conn, plan)
+    if conn.execute(
+            "SELECT name FROM pragma_table_info('organization_plans')"
+            " WHERE name='scope_policy_version'").fetchone() and \
+            (plan["scope_policy_version"]
+             and plan["scope_policy_version"] != SCOPE_POLICY_VERSION):
+        _event(conn, plan_id, None, "scope_policy_mismatch",
+               "plan policy {} != current {}".format(
+                   plan["scope_policy_version"], SCOPE_POLICY_VERSION))
 
     move_ops = conn.execute(
         "SELECT COUNT(*) FROM organization_operations"
@@ -239,6 +289,10 @@ def apply_plan(conn, plan_id, *, acknowledge_source_removal=False,
                     raise _HaltApply()
 
             # --- re-validation at execution time (TOCTOU defence) ---
+            ok_path, path_reason = op_path_check(src, dst, target_root)
+            if not ok_path:
+                fail("org-scope-1: {}".format(path_reason))
+                continue
             if not _dest_contained(dst, target_root):
                 fail("destination escapes target root; refused")
                 continue
@@ -346,6 +400,13 @@ def undo_operation(conn, operation_id, *, approve_delete_copy=False):
     src, dst = op["source_abs"], op["dest_abs"]
     plan = conn.execute("SELECT * FROM organization_plans WHERE id = ?",
                         (op["plan_id"],)).fetchone()
+    # org-scope-1: recovery never widens the approved scope
+    revalidate_plan_scope(conn, plan)
+    ok_path, path_reason = op_path_check(dst, src, plan["target_root"])
+    if not ok_path:
+        raise ExecutionError(
+            "undo refused — operation paths are outside the approved scope: "
+            "{}".format(path_reason))
     if not os.path.isfile(dst) or os.path.islink(dst):
         raise ExecutionError(
             "destination is missing or no longer a regular file; undo refused")

@@ -8,6 +8,7 @@ Legend: ✔ verified · M manual/checklist · ∅ not tested
 | Renders offline, no network refs | ✔ | regex sweep: 0 external src/href/action |
 | Valid UTF-8, single file | ✔ | generated file (11,763 B smoke; scales with ops) |
 | Data embedded escaped | ✔ | U+2028/2029 + <>& escaped; fixture with `<script>` name rendered harmlessly |
+| Organization-scope panel rendered | ✔ | selected folder, canonical path, policy org-scope-1, eligible/excluded counters, reason histogram, per-check validation table, hard-boundary banner; 0 external refs verified |
 | Search filters rows live | ✔ | JS inspection (input listeners wired to OPS array) |
 | Pagination correct at boundaries | ✔ | 6 pages @250 for 1500 ops; prev/next disable logic; record count text updates |
 | Conflict rows visually distinct | ✔ M | warning tag color; legend via banner |

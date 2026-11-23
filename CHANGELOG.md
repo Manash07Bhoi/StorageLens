@@ -4,6 +4,57 @@ All notable changes to Android Storage Audit are recorded here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] — 2026-11-23
+
+### Added (mandatory organization scope policy — org-scope-1)
+
+- **The organization engine may now act only inside ONE explicitly selected,
+  user-owned folder.** V2.0.0 planned candidates from the whole scanned
+  shared-storage tree — this was unsafe by policy (it could plan operations
+  on Android/media and any other accessible content) and is removed.
+- `organizer/scope.py` — `validate_scope()` (default-deny target validation:
+  exists · is dir · no symlink escapes anywhere in the path · not Android/ nor
+  any `Android` component anywhere · no hidden components · not reserved
+  (`LOST.DIR`, `.Trash-*`, `.thumbnails`) · not protected system prefixes
+  (`/system`, `/vendor`, `/product`, `/apex`, `/odm`, `/data`, …) · not
+  Termux-private (`PREFIX`) · not the filesystem root/home/entire shared
+  storage · no cross-boundary mount), `walk_eligible()` (recursive default-deny
+  exclusion at every level; never follows symlinks; exclusions are recorded),
+  `op_path_check()` (per-operation source+destination validation).
+- **Android/ is completely prohibited** — all of it, all nesting, all depth,
+  with no user-facing override, for planning, execution and undo.
+- **Full revalidation before execution and before undo.** Approving a plan
+  never widens its scope; apply re-validates the scope from scratch (refusal
+  is journalled as `scope_revalidation_failed`) and checks every operation
+  individually (source and destination). Recovery never escapes the scope.
+- **Schema v3** (additive): `organization_plans` gains `eligible_files`,
+  `excluded_entries`, `scope_policy_version`, `scope_canonical`,
+  `scope_allowed_json`, `scope_excluded_json`, `scope_validation_json`.
+  forward-only migration; v2 → v3 preserves plans and scan history
+  (idempotent, tested).
+- Preview now renders an **organization-scope panel**: selected folder,
+  canonical path, policy version, eligible/excluded counts, reason breakdown,
+  per-check validation table, and an explicit hard-boundary notice.
+- CLI: `organize-plan --scope FOLDER` (`--target` kept as a compatibility
+  alias); refusal prints
+  "Organization unavailable: this location is protected or outside the
+  permitted user-data scope." plus per-reason lines.
+- `docs/ORGANIZATION_SCOPE_SECURITY_TESTS.md` — the mandatory twenty cases;
+  all automated in `tests/test_scope_security.py` (21 tests).
+
+### Changed
+
+- Plan rule version → `1.1.0`; candidates come from a fresh lstat walk of the
+  approved scope, never from scan rows (V1 scan is provenance-only and
+  read-only visibility never grants organization permission).
+- Test suite: 136 → **157 tests**; all green.
+
+### Notes
+
+- Copy-keep, move double-consent, no-overwrite, verify-before-source-removal,
+  journal, undo semantics: unchanged (V1/V2 safety contract preserved).
+- On-device validation remains NOT TESTED; host-validated only, as with v2.0.0.
+
 ## [2.0.0] — 2026-11-23
 
 ### Added (V2 — planning-first organization engine, M1)

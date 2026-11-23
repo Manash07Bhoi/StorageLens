@@ -140,5 +140,5 @@ Every write-capable site in the codebase, classified:
   (no external URL), injection resistance.
 - `tests/test_database.py` — immutability, transitions, integrity,
   migration policy, stale-PID recovery.
-- Full suite: `python3 -m unittest discover -s tests -v` → **136 tests OK**
+- Full suite: `python3 -m unittest discover -s tests -v` → **157 tests OK**
   (2026-11-23).

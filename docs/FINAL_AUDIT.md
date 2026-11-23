@@ -241,3 +241,36 @@ the working tree):
 
 This is the strongest release evidence available without a phone: the public
 artifact itself, not the author's working tree, is what was verified.
+
+## v2.1.0 addendum — 2026-11-23 (org-scope-1 mandatory policy)
+
+**Trigger:** product-owner mandate — V2 must NEVER organize Android/, system,
+application-private, Termux-private, hidden or reserved content; only an
+explicitly selected, validated, user-owned folder may be organized.
+
+**What changed (behaviour-breaking, deliberately):**
+- `organizer/scope.py` introduced (validate_scope / walk_eligible /
+  op_path_check). Android/ is rejected anywhere in the path; hidden/reserved/
+  cross-boundary/Termux-private/system-prefix selections rejected; recursive
+  traversal prunes prohibited directories at every depth and records reasons;
+  execution revalidates the scope from scratch before the first operation and
+  per operation; undo revalidates too. No override exists anywhere.
+- Plan candidates now come from a fresh lstat walk of the approved scope —
+  NOT from V1 scan rows (the scan can see more than the user approved;
+  visibility ≠ permission).
+- Schema v3 adds the scope manifest to organization_plans (eligible/excluded
+  counts, policy version, canonical path, violation-free allowed dirs, JSON
+  exclusions + validation report). Forward-only, idempotent, v1→v3 and
+  v2→v3 paths tested.
+- Preview renders the organization-scope panel; CLI gained `--scope`
+  (`--target` retained as compatibility alias); protected selections exit 2
+  with the standard refusal message; the refusal is journalled.
+- Tests: 136 → **157**; mandatory ORGANIZATION_SCOPE_SECURITY_TESTS.md
+  (20 cases) implemented in tests/test_scope_security.py (21 tests) — all
+  pass. V1 untouched.
+
+**Not claimed:** on-device validation (still pending); Android/ protection
+relies on path rules that hold regardless of FUSE internals. The v2.0.0
+"organize entire scan" behaviour no longer exists; any plan built under
+v2.0.0 semantics would be a different, broader scope and is impossible to
+build in v2.1.0.

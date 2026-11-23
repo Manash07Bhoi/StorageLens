@@ -8,8 +8,8 @@ fixtures only; no personal files were scanned.
 
 | # | Command | Result |
 |---|---|---|
-| 1 | `python3 -m unittest discover -s tests -v` | **Ran 136 tests — OK** (see V2 addendum at bottom for post-V2 numbers) |
-| 2 | `python3 -m unittest discover -s .` (in `tests/`) | Ran 136 tests — OK |
+| 1 | `python3 -m unittest discover -s tests -v` | **Ran 157 tests — OK** (see V2 addenda at bottom) |
+| 2 | `python3 -m unittest discover -s .` (in `tests/`) | Ran 157 tests — OK |
 | 3 | `node --check storage_audit/report_templates/report.js` | exits 0 |
 | 4 | `python3 tools/benchmark.py --files 10000` | measured; see `docs/PERFORMANCE.md` |
 | 5 | Manual CLI smoke (`--help`, `check`, `scan`, `report`, `list-runs`, `show-run`) on fixture | exits 0; output shown in README/§17 handoff |
@@ -103,3 +103,20 @@ V2 test modules: `tests/test_organizer.py` (23 tests — planner conflict/symlin
 Per-module counts updated: V1 suite 113 tests + V2 23 = **136**.
 
 **Never executed:** any test on a physical Android device. V2 on-device performance, executor behavior across FUSE/scoped-storage, and Termux permission interactions are all **NOT TESTED** (see V2_ACCEPTANCE_CRITERIA.md gates J and V2 device items).
+
+## V2.1.0 addendum (2026-11-23, executed on dev host)
+
+| # | Command | Result |
+|---|---|---|
+| w1 | `python3 -m unittest discover -s tests` | **Ran 157 tests — OK** |
+| w2 | `python3 -m unittest tests.test_scope_security -v` | 21/21 PASS — all 20 mandatory cases + one symlink-escape variant |
+| w3 | `python3 -m compileall -q storage_audit tests` | clean |
+| w4 | Fresh-HOME e2e (scan→plan --scope→preview→approve→apply) on synthetic tree with Android/ + hidden children | plan eligible=2 excluded=2; refusal path for Android target exits 2 with the policy message |
+| w5 | Preview HTML re-rendered with scope panel | scope panel present; 0 external refs |
+
+v2.1.0 test modules: adds `tests/test_scope_security.py` (21 tests implementing
+the mandatory ORGANIZATION_SCOPE_SECURITY_TESTS.md mapping); V1 suite
+(113) + V2 engine suite (23) + scope security (21) = **157**.
+
+**Never executed on a device.** org-scope-1 path rules hold regardless of FUSE
+behaviour; no claim of on-device verification is made.

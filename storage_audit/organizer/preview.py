@@ -60,6 +60,92 @@ def render_plan_preview(conn, plan_id):
                             len(skipped_events),
                             "y was" if len(skipped_events) == 1 else "ies were")
 
+    # --- org-scope-1 panel ---
+    def plan_get(key, default=None):
+        try:
+            value = plan[key]
+        except (KeyError, IndexError):
+            return default
+        return default if value is None else value
+
+    scope_root = plan_get("scope_canonical") or plan["target_root"]
+    policy = plan_get("scope_policy_version", "") or "(pre-2.1.0)"
+    eligible = plan_get("eligible_files", 0) or 0
+    excluded = plan_get("excluded_entries", 0) or 0
+    try:
+        excluded_list = json.loads(plan_get("scope_validation_json", "{}") or "{}")
+        checks = excluded_list.get("checks", []) if isinstance(excluded_list, dict) else []
+    except Exception:
+        checks = []
+    try:
+        approved_dirs = json.loads(plan_get("scope_allowed_json", "[]") or "[]")
+    except Exception:
+        approved_dirs = []
+    try:
+        excl_items = json.loads(plan_get("scope_excluded_json", "[]") or "[]")
+    except Exception:
+        excl_items = []
+    reason_counts = {}
+    for item in excl_items:
+        reason = str(item.get("reason", "?"))
+        reason_counts[reason] = reason_counts.get(reason, 0) + 1
+    reason_rows = "".join(
+        '<tr><td>{}</td><td class="mono">{}</td></tr>'.format(e(k), v)
+        for k, v in sorted(reason_counts.items(), key=lambda kv: -kv[1]))
+    checks_pass = sum(1 for c in checks if c.get("result") == "pass")
+    checks_skip = sum(1 for c in checks if c.get("result") == "skip")
+    checks_fail = sum(1 for c in checks if c.get("result") == "FAIL")
+    approval_state = "approved" if plan["status"] in (
+        "approved", "executing", "completed", "completed_with_errors") else (
+        "draft (not approved)" if plan["status"] in (
+            "draft", "ready_for_review") else plan["status"])
+
+    scope_panel = """
+  <h2>Organization scope (policy <code>{policy}</code>)</h2>
+  <div class="banner" style="background:#0F1B24;border-color:#164E63;color:#BAE6FD">
+    <strong>Selected organization folder:</strong><br>
+    <span class="mono path">{scope_root}</span><br>
+    <span class="small">Canonical path used for validation: <code>{scope_root}</code> ·
+      plan state: <strong>{approval_state}</strong></span>
+  </div>
+  <div class="cards">
+    <div class="card"><div class="k">Eligible files</div><div class="v">{eligible}</div></div>
+    <div class="card"><div class="k">Excluded entries</div><div class="v warn-t">{excluded}</div></div>
+    <div class="card"><div class="k">Allowed subfolders</div><div class="v">{n_dirs}</div></div>
+    <div class="card"><div class="k">Scope checks</div><div class="v ok-t">{checks_pass}<small> pass</small>{checks_skip_note}</div></div>
+  </div>
+  <div class="banner warn">
+    <strong>Hard boundary.</strong> Android/, system, application-private and
+    Termux-private data, hidden directories, symlinked redirects and reserved
+    locations are <em>never</em> organization candidates — they are excluded by
+    policy at every level, not merely unlisted. This plan contains no operation
+    for them. There is no override.
+  </div>
+  {excluded_block}
+  {checks_block}
+""".format(
+        policy=e(policy), scope_root=e(scope_root),
+        approval_state=e(approval_state), eligible=eligible,
+        excluded=excluded, n_dirs=len(approved_dirs),
+        checks_pass=checks_pass,
+        checks_skip_note=(" · {} skipped (host)".format(checks_skip)
+                          if checks_skip else ""),
+        excluded_block=(
+            '<h2>Excluded (why)</h2><table><thead><tr><th>Reason</th>'
+            '<th>Entries</th></tr></thead><tbody>{}</tbody></table>'
+            .format(reason_rows) if reason_rows else
+            '<p class="small">No excluded entries.</p>'),
+        checks_block=(
+            '<h2>Scope validation</h2><table><thead><tr><th>Check</th>'
+            '<th>Result</th><th>Detail</th></tr></thead><tbody>{}</tbody></table>'
+            .format("".join(
+                '<tr><td>{}</td><td class="{}">{}</td><td class="small">{}</td></tr>'.format(
+                    e(c.get("check", "?")),
+                    "ok-t" if c.get("result") == "pass" else
+                    ("warn-t" if c.get("result") == "skip" else "danger-t"),
+                    e(str(c.get("result", "?"))), e(str(c.get("detail", ""))[:200]))
+                for c in checks))) if checks else "")
+
     events_rows = "\n".join(
         '<tr><td class="mono">{}</td><td>{}</td><td>{}</td></tr>'.format(
             e(ev["event"]),
@@ -144,6 +230,7 @@ h2 {{ font-size:15px; margin:22px 0 8px; color:var(--gold); letter-spacing:.4px;
   </div>
   {move_banner}
   {skipped_note}
+  {scope_panel}
   <div class="banner warn" style="background:#0F1B24;border-color:#164E63;color:#BAE6FD">
     <strong>How to approve:</strong> review every row. Conflicts are excluded automatically.
     Copy-keep (default) never deletes anything. Removal of sources happens only with
@@ -226,6 +313,7 @@ render();
         conflict_n=conflict_count, conf_cls="warn-t" if conflict_count else "ok-t",
         status=e(plan["status"]), move_banner=move_banner,
         skipped_note=skipped_note, events_rows=events_rows,
+    scope_panel=scope_panel,
         target_root=e(plan["target_root"]), rows_json=rows_json,
         accent=_ACCENT, gold=_GOLD)
 

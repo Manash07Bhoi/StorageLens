@@ -55,10 +55,12 @@ def build_parser():
         prog="storage_audit.py",
         description="Android Storage Audit — read-only inventory of accessible "
                     "shared internal storage (Termux), plus an OPT-IN V2 organization "
-                    "engine. The scan never modifies, moves, renames or deletes source "
-                    "files. V2 'organize-*' commands change files ONLY after an explicit, "
-                    "logged approval, and never overwrite existing files. "
-                    "No network access either way.",
+                    "engine restricted to ONE explicitly selected, user-owned folder. "
+                    "The scan never modifies, moves, renames or deletes source files. "
+                    "V2 'organize-*' commands change files ONLY after an explicit, "
+                    "logged approval, never overwrite existing files, and NEVER touch "
+                    "Android/, system, application-private, Termux-private, hidden or "
+                    "reserved locations (policy org-scope-1). No network access.",
         epilog="Environment variables: STORAGE_AUDIT_ROOT (default scan root), "
                "XDG_DATA_HOME (state directory base).")
     parser.add_argument("--version", action="version",
@@ -108,12 +110,19 @@ def build_parser():
     p_show = sub.add_parser("show-run", help="Show counters for one run id")
     p_show.add_argument("scan_id", type=int)
 
-    p_oplan = sub.add_parser("organize-plan", help="V2: build a DRAFT organization plan from a scan")
+    p_oplan = sub.add_parser("organize-plan",
+                             help="V2: build a DRAFT plan for ONE explicitly selected, "
+                                  "user-owned folder (Android/ and system locations are "
+                                  "never permitted)")
     p_oplan.add_argument("--scan-id", type=int, default=None,
-                         help="Scan run id (default: latest completed run)")
-    p_oplan.add_argument("--target", required=True,
-                         help="Destination root for organized files (e.g. "
-                              "'~/storage/shared/Organized'). Created only when executing.")
+                         help="Scan run id (default: latest completed run). The scan is "
+                              "provenance only — files are discovered by walking the "
+                              "selected folder, never by unverified scan rows.")
+    p_oplan.add_argument("--scope", "--target", dest="target", required=True,
+                         help="The ONE user-owned folder to organize (e.g. "
+                              "'~/storage/shared/Documents'). Only files inside this "
+                              "folder are planned; Android/, system, Termux-private, "
+                              "hidden and reserved content is default-deny.")
     p_oplan.add_argument("--rule", default="by-category", choices=["by-category"])
     p_oplan.add_argument("--action", default="copy-keep", choices=["copy-keep", "move"],
                          help="copy-keep (default) never deletes; move removes sources "
@@ -459,14 +468,28 @@ def cmd_organize_plan(args, state_dir, db_path, output_dir):
             conn, scan_id, args.target, rule=args.rule, action=args.action,
             hash_verify=args.hash_verify)
         print("Organization plan #{} created (DRAFT — nothing has been changed)".format(plan_id))
+        print("  Selection:       {} (policy {})".format(
+            stats["target_root"], stats["scope_policy_version"]))
         print("  Source scan:     #{}  | rule: {} | action: {}".format(
             scan_id, args.rule, stats["action"]))
+        print("  Eligible files:  {}".format(stats["eligible_files"]))
+        print("  Excluded:        {} entries (protected/hidden/reserved boundary)".format(
+            stats["excluded_entries"]))
         print("  Operations:      {}  ({} bytes, {} conflicts, {} skipped)".format(
             stats["operations"], stats["total_bytes"], stats["conflicts"],
             stats["skipped"]))
-        print("  Target root:     {}".format(stats["target_root"]))
+        print("  Scope policy:    Android/, system, Termux-private, hidden and reserved")
+        print("                   content is default-deny and will never be touched.")
         print("  Next: python storage_audit.py organize-preview --plan-id {}".format(plan_id))
         return EXIT_OK
+    except organizer.ScopeRejected as exc:
+        print("Organization unavailable: this location is protected or outside "
+              "the permitted user-data scope.", file=sys.stderr)
+        for reason in exc.validation["reasons"]:
+            print("  - {}".format(reason), file=sys.stderr)
+        print("Select a personal folder instead (e.g. Documents, Download, "
+              "Pictures). There is no override.", file=sys.stderr)
+        return EXIT_USAGE
     except Exception as exc:
         print("Could not create plan: {}".format(exc), file=sys.stderr)
         return EXIT_INTERNAL
@@ -508,9 +531,20 @@ def cmd_organize_approve(args, state_dir, db_path, output_dir):
             "SELECT COUNT(*) FROM organization_operations"
             " WHERE plan_id = ? AND status='conflict'",
             (args.plan_id,)).fetchone()[0]
+        try:
+            eligible = plan["eligible_files"]
+            excluded = plan["excluded_entries"]
+            policy = plan["scope_policy_version"] or "(pre-2.1.0 plan)"
+        except KeyError:
+            eligible = excluded = None
+            policy = "(pre-2.1.0 plan)"
         print("Plan #{}: {} operations, {} bytes, action={}, conflicts={}".format(
             plan["id"], plan["total_operations"], plan["total_bytes"],
             plan["action"], conflicts))
+        print("  Approved scope: {} (policy {})".format(plan["target_root"], policy))
+        if eligible is not None:
+            print("  Eligible files: {} | Excluded entries: {}".format(
+                eligible, excluded))
         if plan["action"] == "move":
             print("WARNING: this is a MOVE plan — sources will be DELETED after "
                   "verified copies.")
@@ -591,8 +625,13 @@ def cmd_organize_show(args, state_dir, db_path, output_dir):
         for key in ("scan_id", "rule_name", "rule_version", "target_root",
                     "action", "hash_verify", "status", "total_operations",
                     "total_bytes", "conflicts", "created_at_epoch",
-                    "approved_at_epoch", "approval_note"):
-            print("  {:<18} {}".format(key + ":", plan[key]))
+                    "approved_at_epoch", "approval_note",
+                    "eligible_files", "excluded_entries",
+                    "scope_policy_version", "scope_canonical"):
+            try:
+                print("  {:<20} {}".format(key + ":", plan[key]))
+            except KeyError:
+                pass
         counts = conn.execute(
             "SELECT status, COUNT(*) n FROM organization_operations"
             " WHERE plan_id = ? GROUP BY status", (args.plan_id,)).fetchall()

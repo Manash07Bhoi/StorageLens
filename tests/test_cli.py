@@ -47,7 +47,7 @@ class TestHelpAndVersion(CliCase):
     def test_version(self):
         result = self.run_cli("--version")
         self.assertEqual(result.returncode, 0)
-        self.assertIn("2.0.0", result.stdout)
+        self.assertIn("2.1.0", result.stdout)
 
     def test_no_command_prints_help(self):
         result = self.run_cli()

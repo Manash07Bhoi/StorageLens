@@ -34,3 +34,18 @@ storage require the same `~/storage/shared` access. Root never required.
   races during copy are detected by size/hash verification after fsync).
 - Physical theft/unlocked device: OS responsibility.
 - Git-history exposure incident from 2026-11-23 — see PUBLICATION_PRIVACY_AUDIT.md.
+
+## Scope policy (org-scope-1) — added in v2.1.0
+
+The organization engine is default-deny. Exactly one explicitly selected,
+user-owned folder may be organized at a time; selection must pass
+`validate_scope()` (existence, directory, no symlink escapes anywhere in the
+argument path, not Android/ nor hidden nor reserved, not a protected system
+prefix (`/system`, `/vendor`, `/product`, `/apex`, `/odm`, `/data`, …), not
+Termux-private (`PREFIX`, `/data/…`), not the filesystem root/home/shared
+storage root, no cross-boundary mount). Recursive traversal enforces the same
+exclusions at every level; execution revalidates the scope and each operation;
+undo revalidates again. There is no override, no bypass flag, no config escape
+hatch. See ORGANIZATION_SCOPE_SECURITY_TESTS.md. The scan NEVER grants
+organization permission — V1 visibility is metadata-only and organization runs
+on a fresh lstat walk of the approved folder, not on scan rows.

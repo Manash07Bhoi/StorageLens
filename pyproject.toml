@@ -8,8 +8,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "android-storage-audit"
-version = "2.0.0"
-description = "Read-only inventory and audit of Android shared internal storage for Termux, plus an opt-in, approval-gated organization engine. V1 scan never modifies files; V2 organize commands change files only with explicit logged approval and never overwrite existing files. No network, no root."
+version = "2.1.0"
+description = "Read-only inventory and audit of Android shared internal storage for Termux, plus an opt-in, approval-gated organization engine restricted to explicitly selected, user-owned folders (never Android/, system, or protected data). V1 scan never modifies files. No network, no root."
 readme = "README.md"
 requires-python = ">=3.8"
 license = { text = "MIT" }

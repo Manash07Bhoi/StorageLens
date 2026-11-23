@@ -22,6 +22,25 @@ G8. **Undo is conservative.** Move undo: destination must match recorded size;
 G9. **Symlinks: never followed, copied or moved.** Recorded, refused, logged.
 G10. **Target containment.** Destinations are realpath-checked against the
      approved target root at apply time (not only at plan time).
+G11. **Organization scope (org-scope-1) — default-deny.** The engine may only
+     act inside ONE explicitly selected, user-owned folder. Android/ (all of
+     it), operating-system and application-private directories, all
+     app/Termux-private storage, hidden directories, reserved names and
+     cross-boundary locations are prohibited everywhere in the path, at every
+     depth, with no user-facing override. Selection requires validation
+     (`validate_scope`); failure ⇒ plan refused with the standard message
+     "Organization unavailable: this location is protected or outside the
+     permitted user-data scope."
+G12. **Full revalidation before execution and before undo.** The plan's scope
+     is re-validated from scratch (existence, symlink-escape, component
+     policy, mount boundary, unchanged canonical path) at apply time and at
+     undo time. Every operation also revalidates source AND destination
+     (inside scope, no prohibited components, source not a symlink). Any
+     failure ⇒ refusal (apply) / operation failure with the attempt journalled.
+G13. **Read-only visibility ≠ organization permission.** Scan access never
+     grants organization rights. The V1 scan is provenance only; candidates
+     come from a fresh lstat walk of the approved scope — never from scan
+     rows or from the whole shared-storage tree.
 
 ## What happens on each failure (see V2_FILE_OPERATION_FAILURE_MATRIX.md)
 - Destination exists → op failed; destination untouched; source untouched.

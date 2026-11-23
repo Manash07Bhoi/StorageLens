@@ -33,3 +33,10 @@ scan path, content indexing, OCR, thumbnails, background services.
 Standard library only. No new runtime dependencies for M1/M2. Any future
 dependency requires a documented decision (license, size, Android wheel
 availability, supply-chain review) in DECISIONS.md.
+
+## Shipped increment v2.1.0 (2026-11-23)
+- org-scope-1 policy: explicitly selected, validated user-owned folders only;
+  Android/, system, Termux-private, hidden/reserved default-deny at plan time,
+  before execution and before undo; documented 20-case security test suite.
+- Schema v3 (scope manifest on organization_plans); preview renders the scope
+  panel; CLI `--scope` flag (`--target` kept as compatibility alias).

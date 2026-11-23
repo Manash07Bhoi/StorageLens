@@ -178,42 +178,52 @@ never touch your phone's storage.
 
 ## V2 organization engine (opt-in)
 
-V2 turns an understanding of your storage into an **approved, reversible,
-verified reorganization** — nothing happens silently:
+V2 helps you reorganize **one explicitly selected, user-owned folder** —
+and nothing else. It never touches Android/, system, application-private or
+Termux-private data, hidden or reserved content — anywhere in the path, at
+every depth, with **no override**. Enforced in the backend and filesystem
+layer (not just the UI); re-validated at plan time, before every execution
+and before undo — see
+[`docs/ORGANIZATION_SCOPE_SECURITY_TESTS.md`](docs/ORGANIZATION_SCOPE_SECURITY_TESTS.md)
+(20 mandatory cases, all automated) and `docs/V2_OPERATION_SAFETY.md`.
+
+The flow — nothing happens silently:
 
 ```
-scan → organize-plan → organize-preview → organize-approve → organize-apply → organize-undo
+scan → organize-plan --scope FOLDER → organize-preview → organize-approve → organize-apply → organize-undo
 ```
 
 Commands (all local, offline, no network):
 
 | Command | What it does |
 |---|---|
-| `organize-plan --target DIR [--action copy-keep\|move] [--hash-verify] [--scan-id N]` | Build a DRAFT plan from a completed scan: maps every inventoried file to `<target>/<Category>/<original relative path>`. Conflicts are flagged, never silently overwritten. |
-| `organize-preview --plan-id N` | Write a fully offline, premium dark HTML preview of the plan (every operation listed, filterable/paginated). Review it before approving. |
-| `organize-approve --plan-id N` | Explicit approval. Moves require double consent (`--action move` at plan time AND `--acknowledge-source-removal` at apply time). |
-| `organize-apply --plan-id N [--acknowledge-source-removal]` | Execute approved operations: copy → fsync → verify (size+mtime, or SHA-256 with `--hash-verify`) → journal every step. Copy-keep never deletes; move removes a source only after its destination verifies. |
-| `organize-history` / `organize-show --plan-id N` | Plan history and counters from the audit journal. |
-| `organize-undo --operation-id N [--approve-delete]` | Move: copy the destination back to (now-free) source path. Copy-keep: delete the created copy, only with `--approve-delete`. Refuses if the file changed since execution. |
+| `organize-plan --scope FOLDER [--action copy-keep\|move] [--hash-verify] [--scan-id N]` | Build a DRAFT plan scoped to ONE explicitly selected, user-owned folder (e.g. `Documents/`): a fresh lstat walk of that folder only maps every eligible file to `<scope>/<Category>/<original relative path>`. Android/, system, Termux-private, hidden and reserved content is default-deny at every level and never becomes an operation. Conflicts are flagged, never silently overwritten. (`--target` remains as a compatibility alias.) |
+| `organize-preview --plan-id N` | Write a fully offline, premium dark HTML preview: scope panel (selection, canonical path, policy org-scope-1, eligible/excluded counts, reason breakdown, per-check validation), every operation (filterable/paginated). Review before approving. |
+| `organize-approve --plan-id N` | Explicit approval (typed `APPROVE` by default). Moves require double consent (`--action move` at plan time AND `--acknowledge-source-removal` at apply time). |
+| `organize-apply --plan-id N [--acknowledge-source-removal]` | The approved scope is **re-validated from scratch** before anything runs (refusal is journalled); then copy → fsync → verify (size+mtime, or SHA-256 with `--hash-verify`) → journal every step. Copy-keep never deletes; move removes a source only after its destination verifies. |
+| `organize-history` / `organize-show --plan-id N` | Plan history, scope manifest, counters from the audit journal. |
+| `organize-undo --operation-id N [--approve-delete]` | Same scope revalidation. Move: copy the destination back to the (now-free) source path. Copy-keep: delete the created copy, only with `--approve-delete`. Refuses if the file changed since execution. |
 | `organize-cancel --plan-id N` | Cancel a draft/approved plan. |
 
-**Safety properties, enforced in code and tests:** no approval → no execution ·
-no overwrite of any existing file (plan-time and apply-time checks) · no
-source removal before destination verification · symlinks are never followed ·
-destinations must stay inside the approved target root · interrupted
-operations are marked, never assumed complete · full journal in
-`organization_events` · failed runs never hide partial work.
+**Safety properties, enforced in code and tests (org-scope-1):** explicit
+selection only · Android/ & system & Termux-private & hidden & reserved =
+default-deny everywhere in the path, every depth · sources AND destinations
+validated at execution time · scope re-validated before apply and undo ·
+no approval → no execution · no overwrite, ever · no source removal before
+destination verification · symlinks never followed · interrupted operations
+marked, never assumed complete · full journal in `organization_events`.
 
-**Scope of V2 today (v2.0.0, honest):** one rule (`by-category`), local
-moves/copies only, offline HTML preview, no recommendation engine, no native
-app. On-device execution has **not** been validated (only the Linux host) —
-see [Validation status](#validation-status). Roadmap: `docs/V2_ROADMAP.md`.
+**Scope of V2 today (v2.1.0, honest):** one rule (`by-category`), in-folder
+reorganization only, local moves/copies only, offline HTML preview, no
+recommendation engine, no native app. On-device execution has **not** been
+validated (only the Linux host) — see [Validation status](#validation-status).
+Roadmap: `docs/V2_ROADMAP.md`.
 
 ---
 
 ## Command reference
 
-Actual `python3 storage_audit.py --help` output (v2.0.0):
+Actual `python3 storage_audit.py --help` output (v2.1.0):
 
 ```
 usage: storage_audit.py [-h] [--version] [--db DB] [--output-dir OUTPUT_DIR]
@@ -221,10 +231,12 @@ usage: storage_audit.py [-h] [--version] [--db DB] [--output-dir OUTPUT_DIR]
                         COMMAND ...
 
 Android Storage Audit — read-only inventory of accessible shared internal
-storage (Termux), plus an OPT-IN V2 organization engine. The scan never
-modifies, moves, renames or deletes source files. V2 'organize-*' commands
-change files ONLY after an explicit, logged approval, and never overwrite
-existing files. No network access either way.
+storage (Termux), plus an OPT-IN V2 organization engine restricted to ONE
+explicitly selected, user-owned folder. The scan never modifies, moves,
+renames or deletes source files. V2 'organize-*' commands change files ONLY
+after an explicit, logged approval, never overwrite existing files, and NEVER
+touch Android/, system, application-private, Termux-private, hidden or
+reserved locations (policy org-scope-1). No network access.
 
 positional arguments:
   COMMAND
@@ -234,7 +246,9 @@ positional arguments:
                         rescanning
     list-runs           List past scan runs
     show-run            Show counters for one run id
-    organize-plan       V2: build a DRAFT organization plan from a scan
+    organize-plan       V2: build a DRAFT plan for ONE explicitly selected,
+                        user-owned folder (Android/ and system locations are
+                        never permitted)
     organize-preview    V2: write an offline HTML preview of a plan
     organize-approve    V2: approve a draft plan (required before apply)
     organize-apply      V2: execute an APPROVED plan
@@ -356,7 +370,7 @@ Read these before drawing conclusions from a report:
 
 **V1 implementation complete and device-exercised once; V2 host-validated; on-device validation pending.**
 
-The development host ran the full suite: **136 tests pass**. On 2026-11-23 the
+The development host ran the full suite: **157 tests pass**. On 2026-11-23 the
 author ran V1 **on a physical Android 15 / Termux device**: 8,584 files +
 165 directories inventoried in 6.5 s (42.36 GiB logical, status
 `completed_with_gaps`); the report was generated on-device; two
@@ -420,6 +434,8 @@ V2 engineering documentation:
   [`docs/V2_PERFORMANCE_VALIDATION.md`](docs/V2_PERFORMANCE_VALIDATION.md) +
   [`docs/V2_RECOMMENDATION_VALIDATION.md`](docs/V2_RECOMMENDATION_VALIDATION.md)
   — validation evidence and limits. [`docs/V2_ROADMAP.md`](docs/V2_ROADMAP.md).
+- [`docs/ORGANIZATION_SCOPE_SECURITY_TESTS.md`](docs/ORGANIZATION_SCOPE_SECURITY_TESTS.md)
+  — mandatory 20-case scope-security suite (all automated, host-verified).
 - Cross-cutting: [`docs/COMPREHENSIVE_GAP_REGISTER.md`](docs/COMPREHENSIVE_GAP_REGISTER.md),
   [`docs/FINAL_ACCEPTANCE_MATRIX.md`](docs/FINAL_ACCEPTANCE_MATRIX.md),
   [`docs/PUBLICATION_PRIVACY_AUDIT.md`](docs/PUBLICATION_PRIVACY_AUDIT.md),
@@ -444,9 +460,9 @@ bash run_audit.sh check
 
 ## Status & validation
 
-**V2.0.0 source released (public), host-validated; on-device acceptance is
+**v2.1.0 source released (public), host-validated; on-device acceptance is
 the user's next step.** The code is fully tested on the development host
-(Linux x86_64, 136 tests). One V1 run was executed on the owner's Android 15
+(Linux x86_64, 157 tests). One V1 run was executed on the owner's Android 15
 phone — by the owner, not by the development agent; its artifacts are private
 user data and are not in this repository. The first V2 on-device run is the
 owner's acceptance step — see
@@ -460,13 +476,16 @@ owner's acceptance step — see
   the *accessible shared-storage tree* only.
 - Not a background service — it runs when you run it.
 - Not a cloud uploader — there is no network code anywhere in the project.
-- V2.0.0 is not a cleaner and not "smart": it organizes by category only,
-  with explicit approval, and never deletes (copy-keep default).
+- v2.1.0 is not a cleaner and not "smart": one explicitly selected,
+  validated personal folder only, organized by category, with explicit
+  approval — never Android/, system, application-private or Termux-private
+  data.
 
 ## Roadmap
 
 Shipped: **v1.0.1** (V1 correctness fixes) · **v2.0.0** (V2 planning-first
-organization engine, M1) — see [CHANGELOG.md](CHANGELOG.md).
+organization engine, M1) · **v2.1.0** (org-scope-1 policy: Android/, system,
+Termux-private, hidden & reserved default-deny) — see [CHANGELOG.md](CHANGELOG.md).
 
 - **M2:** on-device acceptance run + device benchmarks; compare scan runs;
   richer rule plugins.

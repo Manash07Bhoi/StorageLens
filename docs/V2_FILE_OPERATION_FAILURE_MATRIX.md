@@ -18,6 +18,10 @@ St = resulting operation status · Test = test in tests/test_organizer.py
 | Undo: destination changed since execution | undo re-check | n/a | changed file preserved | refused | no data rewritten | test_undo_refuses_when_dest_changed |
 | Undo: source path occupied | undo re-check | would-be clobber refused | untouched | refused | no overwrite possible | gate in undo_operation |
 | Undo copy-keep without approval | undo gate | intact | untouched | refused | deletion needs explicit flag | test_undo_copy_keep_requires_approve_delete |
+| Scope becomes invalid between approval and apply (deleted/renamed/swapped/symlinked) | before any op | untouched | nothing written | apply refused | zero operations execute; refusal journalled | test_m16_*, test_m17b_* |
+| Sub-directory of scope swapped for symlink pre-apply | per op | source untouched | nothing written | failed op(s) | symlink not followed; op refused in scope check | test_m17a_* |
+| Tampered plan row: dest outside scope / prohibited component | per op | source intact | nothing written | failed op | op refused; refusal journalled | M14, M15, M19 |
+| Tampered plan row: plan re-issued for different scope | before any op | untouched | nothing written | apply refused | canonical-scope mismatch | test_m20_* |
 | Verify fails but destination left behind | post-copy | intact | bogus dst preserved for inspection | failed | user-visible; never auto-deleted | by design (documented in V2_OPERATION_SAFETY.md) |
 | DB write fails mid-apply | per-op transaction | intact or copied | per-op fsync'd | op failed; plan continues | operation atomicity | transactional design; not fault-injected |
 | Rollback impossible (dst gone) | undo | — | absent | refused | explicit error | guard clauses in undo_operation |
