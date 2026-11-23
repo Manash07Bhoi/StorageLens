@@ -216,3 +216,28 @@ E PASS · F PASS · G PASS · H PASS host · I PARTIAL · J NOT TESTED · K PASS
 **Final wording (unchanged): v2.0.0 is a public source release, host-validated.
 It is NOT Android-validated, NOT production-for-phone-proven; the owner's
 on-device acceptance run is the next milestone (M2).**
+
+## Independent public-clone audit — 2026-11-23 (release verification)
+
+After pushing `d24c08b`, a **fresh clone of the public repository** was made on
+the dev host and every release-critical step was re-executed from it (not from
+the working tree):
+
+- `git clone https://github.com/Manash07Bhoi/StorageLens.git` → HEAD = `d24c08b`; 35 docs present.
+- `python3 storage_audit.py --version` → `Android Storage Audit 2.0.0 (schema 2)`.
+- `python3 -m unittest discover -s tests` → `Ran 136 tests in 3.7s — OK`.
+- Fresh-HOME end-to-end V2 loop on a 40-file synthetic fixture:
+  `scan` (exit 0) → `organize-plan --target …/Organized` (40 ops, 0 conflicts)
+  → `organize-preview` (offline HTML written) → `organize-approve` (typed
+  APPROVE gate enforced — EOF refused without input) → `organize-apply`
+  (plan completed, done=40 failed=0 skipped=0) → `organize-history` shows
+  `completed`. Copy-keep left all 40 source files intact (40 sources + 40
+  copies verified on disk).
+- GitHub API (authenticated): repository `Manash07Bhoi/StorageLens` PUBLIC,
+  MIT, default branch `main`, zero open issues, tree contains no
+  `.zip`/`.sqlite3`/`.jsonl`/`.csv`, required files present,
+  `raw.../main/docs/V2_PRD.md` serves HTTP 200.
+- Public-repo clone tests ran inside the dev host; **no device was involved**.
+
+This is the strongest release evidence available without a phone: the public
+artifact itself, not the author's working tree, is what was verified.
