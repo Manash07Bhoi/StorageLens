@@ -334,7 +334,13 @@ def validate_scope(path, *, storage_root=None, home=None,
                        "detail": "unrecognized-name check skipped (registration flow)"})
     else:
         selection = _selection_name(canonical, rootc)
-        if selection and selection in RECOGNIZED_PERSONAL_FOLDERS:
+        if reasons:
+            # A prohibited check already failed: the verdict is a rejection
+            # either way, so recognition is moot — report it as skipped
+            # instead of piling a redundant failure line onto the refusal.
+            checks.append({"check": "recognized_personal", "result": "skip",
+                           "detail": "not evaluated — a prohibited check already failed"})
+        elif selection and selection in RECOGNIZED_PERSONAL_FOLDERS:
             # Recognition is independent of the registry: a corrupt registry
             # never manufactures uncertainty about a well-known personal folder.
             add("recognized_personal", True,
