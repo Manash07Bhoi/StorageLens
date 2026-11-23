@@ -324,3 +324,60 @@ class TestDatabaseInsideRoot(ScanTestCase):
             conn.close()
         self.assertEqual(rows, [])
         self.assertIn("audit.sqlite3", run["exclusions_json"])
+
+
+class TestCoverageNotesWording(unittest.TestCase):
+    """_coverage_notes must label mount-boundary issues precisely (V1.0.1)."""
+
+    def _db_with_issues(self, issues):
+        import sqlite3
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute("""
+            CREATE TABLE scan_issues (
+                id INTEGER PRIMARY KEY,
+                scan_id INTEGER NOT NULL,
+                path TEXT NOT NULL,
+                operation TEXT NOT NULL,
+                error_category TEXT NOT NULL,
+                error_code INTEGER,
+                error_message TEXT NOT NULL,
+                occurred_at_epoch INTEGER NOT NULL
+            )""")
+        for i, (operation, code) in enumerate(issues, start=1):
+            conn.execute(
+                "INSERT INTO scan_issues(scan_id, path, operation, error_category,"
+                " error_code, error_message, occurred_at_epoch)"
+                " VALUES (1, 'fixture/p%d', ?, 'mount_boundary', ?, 'msg', 0)" % i,
+                (operation, code))
+        return conn
+
+    def test_mount_boundary_wording(self):
+        from storage_audit.scanner import _coverage_notes
+        conn = self._db_with_issues([("mount_boundary", None),
+                                     ("mount_boundary", None)])
+        notes = _coverage_notes(conn, 1, issue_count=2, skipped=2,
+                                excluded=0, status="completed_with_gaps",
+                                failure_note=None)
+        self.assertIn("2 mount_boundary", notes)
+        self.assertIn("mount boundary", notes)
+        self.assertNotIn("containment", notes)
+        conn.close()
+
+    def test_root_escape_still_labelled_containment(self):
+        from storage_audit.scanner import _coverage_notes
+        conn = self._db_with_issues([("containment", None)])
+        notes = _coverage_notes(conn, 1, issue_count=1, skipped=1,
+                                excluded=0, status="completed_with_gaps",
+                                failure_note=None)
+        self.assertIn("1 containment", notes)
+        conn.close()
+
+    def test_no_issues_message(self):
+        from storage_audit.scanner import _coverage_notes
+        conn = self._db_with_issues([])
+        notes = _coverage_notes(conn, 1, issue_count=0, skipped=0,
+                                excluded=0, status="completed",
+                                failure_note=None)
+        self.assertEqual(notes, "No issues observed within the accessible tree.")
+        conn.close()

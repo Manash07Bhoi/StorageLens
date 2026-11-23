@@ -378,8 +378,9 @@ def _describe_entry(entry, child_rel, root_canonical, dir_rel, depth,
     if int(lst.st_dev) != int(root_dev):
         skip_reason = "mount_boundary"
         state["skipped"] += 1
-        emit_issue(child_rel, "containment", "mount_boundary", None,
-                   "entry lives on a different filesystem device; "
+        emit_issue(child_rel, "mount_boundary", "mount_boundary", None,
+                   "entry lives on a different filesystem device "
+                   "(e.g. Android scoped-storage FUSE mount); "
                    "not crossed in V1")
 
     symlink_target = None

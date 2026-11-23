@@ -4,7 +4,7 @@ Read-only, local inventory of accessible shared internal storage for Termux.
 No network access. No file-content reading by default. No root required.
 """
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 TOOL_NAME = "Android Storage Audit"
 SCHEMA_VERSION = 1

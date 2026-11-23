@@ -299,13 +299,22 @@ def _coverage_notes(conn, run_id, issue_count, skipped, excluded, status,
         notes.append("Scan was cancelled by the user; coverage is partial.")
     if issue_count:
         ops = conn.execute(
-            "SELECT operation, COUNT(*) AS n FROM scan_issues WHERE scan_id = ?"
-            " GROUP BY operation ORDER BY n DESC", (run_id,)).fetchall()
-        notes.append("Issues: " + ", ".join(
-            "{} {}".format(r["n"], r["operation"]) for r in ops))
+            "SELECT operation, error_code AS code, COUNT(*) AS n"
+            " FROM scan_issues WHERE scan_id = ?"
+            " GROUP BY operation, error_code ORDER BY n DESC, operation",
+            (run_id,)).fetchall()
+        parts = []
+        for r in ops:
+            code = r["code"]
+            code_txt = "" if code is None else str(code).strip()
+            label = r["operation"] + ("/" + code_txt if code_txt else "")
+            parts.append("{} {}".format(r["n"], label))
+        notes.append("Issues: " + ", ".join(parts))
     if skipped:
-        notes.append("{} entr{} skipped (e.g. mount boundary), not crossed.".format(
-            skipped, "y" if skipped == 1 else "ies"))
+        notes.append(
+            "{} entr{} on a different filesystem device (mount boundary) "
+            "were not crossed; see scan issues for exact paths.".format(
+                skipped, "y" if skipped == 1 else "ies"))
     if excluded:
         notes.append("{} path(s) excluded (output location inside scan root).".format(excluded))
     if not notes:

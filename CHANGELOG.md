@@ -4,6 +4,35 @@ All notable changes to Android Storage Audit are recorded here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] — 2026-11-23
+
+### Fixed
+
+- **Mount-boundary issues are no longer reported as "containment".**
+  Real-device scan analysis (Android 15, Termux) showed the two skipped
+  entries — the scoped-storage FUSE mounts `Android/data` and
+  `Android/obb` — were classified by operation `containment`, producing
+  the misleading coverage note "Issues: 2 containment". The scanner now
+  records `operation=mount_boundary`, and coverage notes group issues by
+  operation *and* error code, e.g. "Issues: 2 mount_boundary", plus a
+  precise skipped-entries note naming the mount-boundary policy.
+  `containment` is now reserved for genuine root-containment rejections
+  (`path_outside_root`).
+- Coverage-note wording no longer hedges with "(e.g. mount boundary)" —
+  it states exactly what was skipped and why, and points to the scan
+  issues for the exact paths.
+
+### Notes
+
+- No change to scanning semantics: the mount-boundary rule is unchanged —
+  entries on a different filesystem device are still recorded, never
+  crossed, and never counted as covered.
+- Completed historical runs keep their original recorded wording; the
+  fix applies to scans and reports generated from this version onward.
+  Re-running `report --latest` does NOT retroactively relabel an
+  immutable run's stored issue rows.
+- `current_schema` / `SCHEMA_VERSION` unchanged (1); no migration needed.
+
 ## [1.0.0] — 2026-11-23
 
 ### Release notes
