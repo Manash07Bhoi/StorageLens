@@ -8,17 +8,17 @@
 
 | Fact | Observation |
 |---|---|
-| Workspace | Arena remote agent workspace (Linux container), `e2b.local`, x86_64 |
+| Workspace | Arena remote agent workspace (Linux container), x86_64 |
 | Kernel | `6.1.189+ #1 SMP PREEMPT_DYNAMIC` |
 | OS | Debian GNU/Linux 13 (trixie) |
-| Shell working dir | `/home/user` |
+| Shell working dir | the workspace root |
 | Python | 3.13.18 (`/usr/local/bin/python3`) |
 | Git | 2.47.3 |
 | Node | v20.20.2 (used only to syntax-check generated report JavaScript; the product has no Node dependency) |
 | CPUs | 2 |
 | RAM | ~1.9 GiB |
 | Disk (`/`) | 25 GB total, ~21 GB available |
-| `/home/user/uploads/` | Contains only the two specification documents; **no existing project source, no repository, no prior data** |
+| the uploads directory | Contains only the two specification documents; **no existing project source, no repository, no prior data** |
 | Network | Present in the workspace, **not used** by the tool at runtime; no product code path performs network I/O |
 | Termux on this machine | **None.** This is not an Android device and not Termux |
 | Physical phone access | **None.** The agent cannot reach the user's Android phone, `~/storage/shared`, or `/storage/emulated/0` |
@@ -37,7 +37,7 @@
 
 ## What can and cannot be accessed
 
-**Can:** the Linux filesystem (read-only use for fixtures), Python 3.13, SQLite (stdlib), the generated project tree under `/home/user/android-storage-audit/`.
+**Can:** the Linux filesystem (read-only use for fixtures), Python 3.13, SQLite (stdlib), the generated project tree under `the project tree/`.
 
 **Cannot:** the user's Android device, shared storage root, mounted volumes on the phone, battery state, Android version of the phone.
 

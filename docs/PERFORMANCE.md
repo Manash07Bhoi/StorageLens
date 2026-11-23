@@ -11,7 +11,7 @@ not the absolute figures, as the reusable artifact.
 | | |
 |---|---|
 | Date | 2026-11-23 |
-| OS | Linux e2b.local, kernel 6.1.189+ x86_64 (not Android, not Termux) |
+| OS | Linux x86_64 development container (not Android, not Termux) |
 | CPU | Intel Xeon Processor @ 2.60GHz, 2 cores |
 | Memory | 1,982 MiB total |
 | Python | 3.13.18 |
