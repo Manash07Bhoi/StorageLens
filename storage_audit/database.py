@@ -180,6 +180,70 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 );
 """
 
+SCHEMA_V2_SQL = """
+CREATE TABLE IF NOT EXISTS organization_plans (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    scan_id             INTEGER NOT NULL REFERENCES scan_runs(id) ON DELETE RESTRICT,
+    rule_name           TEXT NOT NULL,
+    rule_version        TEXT NOT NULL,
+    target_root         TEXT NOT NULL,
+    action              TEXT NOT NULL DEFAULT 'copy-keep'
+        CHECK (action IN ('copy-keep','move')),
+    hash_verify         INTEGER NOT NULL DEFAULT 0,
+    status              TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft','ready_for_review','approved','executing',
+                          'completed','completed_with_errors','cancelled',
+                          'failed','recovery_required')),
+    created_at_epoch    INTEGER NOT NULL,
+    updated_at_epoch    INTEGER NOT NULL,
+    approved_at_epoch   INTEGER,
+    approval_note       TEXT NOT NULL DEFAULT '',
+    total_operations    INTEGER NOT NULL DEFAULT 0,
+    total_bytes         INTEGER NOT NULL DEFAULT 0,
+    conflicts           INTEGER NOT NULL DEFAULT 0,
+    invalid             INTEGER NOT NULL DEFAULT 0,
+    notes               TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS organization_operations (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    plan_id           INTEGER NOT NULL REFERENCES organization_plans(id) ON DELETE CASCADE,
+    scan_id           INTEGER NOT NULL,
+    seq               INTEGER NOT NULL,
+    action            TEXT NOT NULL CHECK (action IN ('copy-keep','move')),
+    source_rel        TEXT NOT NULL,
+    source_abs        TEXT NOT NULL,
+    dest_rel          TEXT NOT NULL,
+    dest_abs          TEXT NOT NULL,
+    size_bytes        INTEGER,
+    dest_size_bytes   INTEGER,
+    status            TEXT NOT NULL DEFAULT 'planned'
+        CHECK (status IN ('planned','conflict','in_progress','completed',
+                          'failed','interrupted','rolled_back','skipped')),
+    conflict          TEXT,
+    error             TEXT,
+    started_at_epoch  INTEGER,
+    finished_at_epoch INTEGER,
+    UNIQUE (plan_id, seq)
+);
+
+CREATE INDEX IF NOT EXISTS idx_operations_plan ON organization_operations(plan_id);
+CREATE INDEX IF NOT EXISTS idx_operations_status ON organization_operations(status);
+
+CREATE TABLE IF NOT EXISTS organization_events (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    plan_id           INTEGER REFERENCES organization_plans(id) ON DELETE CASCADE,
+    operation_id      INTEGER REFERENCES organization_operations(id) ON DELETE CASCADE,
+    event             TEXT NOT NULL,
+    detail            TEXT NOT NULL DEFAULT '',
+    occurred_at_epoch INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_org_events_plan ON organization_events(plan_id);
+CREATE INDEX IF NOT EXISTS idx_org_events_op ON organization_events(operation_id);
+"""
+
+
 _ENTRY_COLUMNS = [
     "scan_id", "relative_path", "absolute_path", "name", "normalized_name",
     "parent_relative_path", "depth", "kind", "entry_subtype", "extension",
@@ -218,17 +282,30 @@ def migrate(conn):
             "Database schema version {} is newer than this tool supports ({}). "
             "Upgrade the tool; do not downgrade the database.".format(
                 current, SCHEMA_VERSION))
+    applied = {row[0] for row in conn.execute(
+        "SELECT version FROM schema_migrations").fetchall()} if _table_exists(
+            conn, "schema_migrations") else set()
     if current == 0:
-        applied = {row[0] for row in conn.execute(
-            "SELECT version FROM schema_migrations").fetchall()} if _table_exists(
-                conn, "schema_migrations") else set()
-        if 1 not in applied:
-            with conn:
+        with conn:
+            if 1 not in applied:
                 conn.executescript(SCHEMA_SQL)
                 conn.execute(
                     "INSERT OR IGNORE INTO schema_migrations(version, applied_at)"
                     " VALUES (?, ?)", (1, int(time.time())))
-                conn.execute("PRAGMA user_version = {}".format(SCHEMA_VERSION))
+            if 2 not in applied:
+                conn.executescript(SCHEMA_V2_SQL)
+                conn.execute(
+                    "INSERT OR IGNORE INTO schema_migrations(version, applied_at)"
+                    " VALUES (?, ?)", (2, int(time.time())))
+            conn.execute("PRAGMA user_version = {}".format(SCHEMA_VERSION))
+    elif current == 1:
+        with conn:
+            if 2 not in applied:
+                conn.executescript(SCHEMA_V2_SQL)
+                conn.execute(
+                    "INSERT OR IGNORE INTO schema_migrations(version, applied_at)"
+                    " VALUES (?, ?)", (2, int(time.time())))
+            conn.execute("PRAGMA user_version = {}".format(SCHEMA_VERSION))
     return conn.execute("PRAGMA user_version").fetchone()[0]
 
 

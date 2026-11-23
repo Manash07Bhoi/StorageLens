@@ -54,8 +54,11 @@ def build_parser():
     parser = argparse.ArgumentParser(
         prog="storage_audit.py",
         description="Android Storage Audit — read-only inventory of accessible "
-                    "shared internal storage (Termux). Never modifies, moves, "
-                    "renames or deletes source files. No network access.",
+                    "shared internal storage (Termux), plus an OPT-IN V2 organization "
+                    "engine. The scan never modifies, moves, renames or deletes source "
+                    "files. V2 'organize-*' commands change files ONLY after an explicit, "
+                    "logged approval, and never overwrite existing files. "
+                    "No network access either way.",
         epilog="Environment variables: STORAGE_AUDIT_ROOT (default scan root), "
                "XDG_DATA_HOME (state directory base).")
     parser.add_argument("--version", action="version",
@@ -104,6 +107,54 @@ def build_parser():
 
     p_show = sub.add_parser("show-run", help="Show counters for one run id")
     p_show.add_argument("scan_id", type=int)
+
+    p_oplan = sub.add_parser("organize-plan", help="V2: build a DRAFT organization plan from a scan")
+    p_oplan.add_argument("--scan-id", type=int, default=None,
+                         help="Scan run id (default: latest completed run)")
+    p_oplan.add_argument("--target", required=True,
+                         help="Destination root for organized files (e.g. "
+                              "'~/storage/shared/Organized'). Created only when executing.")
+    p_oplan.add_argument("--rule", default="by-category", choices=["by-category"])
+    p_oplan.add_argument("--action", default="copy-keep", choices=["copy-keep", "move"],
+                         help="copy-keep (default) never deletes; move removes sources "
+                              "only after verified copies")
+    p_oplan.add_argument("--hash-verify", action="store_true",
+                         help="Verify copies with SHA-256 (reads file contents; slower). "
+                              "Default verifies size+mtime only.")
+
+    p_oprev = sub.add_parser("organize-preview", help="V2: write an offline HTML preview of a plan")
+    p_oprev.add_argument("--plan-id", type=int, required=True)
+    p_oprev.add_argument("--output", default=None, help="Explicit output HTML path")
+
+    p_oapp = sub.add_parser("organize-approve", help="V2: approve a draft plan (required before apply)")
+    p_oapp.add_argument("--plan-id", type=int, required=True)
+    p_oapp.add_argument("--note", default=None)
+    p_oapp.add_argument("--yes", action="store_true",
+                        help="Skip the interactive APPROVE confirmation (for scripts/tests)")
+
+    p_oapply = sub.add_parser("organize-apply", help="V2: execute an APPROVED plan")
+    p_oapply.add_argument("--plan-id", type=int, required=True)
+    p_oapply.add_argument("--acknowledge-source-removal", action="store_true",
+                          help="Required for move plans: sources are deleted ONLY after "
+                               "their destinations are verified")
+    p_oapply.add_argument("--stop-on-error", action="store_true")
+    p_oapply.add_argument("--limit", type=int, default=None,
+                          help="Apply only the first N pending operations")
+
+    p_ohist = sub.add_parser("organize-history", help="V2: list organization plans")
+    p_ohist.add_argument("--limit", type=int, default=20)
+
+    p_oshow = sub.add_parser("organize-show", help="V2: show one organization plan")
+    p_oshow.add_argument("--plan-id", type=int, required=True)
+
+    p_oundo = sub.add_parser("organize-undo", help="V2: undo one completed operation")
+    p_oundo.add_argument("--operation-id", type=int, required=True)
+    p_oundo.add_argument("--approve-delete", action="store_true",
+                         help="For copy-keep operations: delete the created copy "
+                              "(the untouched source stays)")
+
+    p_ocan = sub.add_parser("organize-cancel", help="V2: cancel a draft/approved plan")
+    p_ocan.add_argument("--plan-id", type=int, required=True)
 
     parser.set_defaults(command=None)
     return parser
@@ -373,6 +424,219 @@ def cmd_report(args, state_dir, db_path, output_dir):
         conn.close()
 
 
+def _open_db(db_path):
+    if not os.path.exists(db_path):
+        print("No database yet at {}".format(db_path), file=sys.stderr)
+        return None
+    conn = database.connect(db_path)
+    database.migrate(conn)
+    return conn
+
+
+def _latest_terminal_scan(conn):
+    row = conn.execute(
+        "SELECT id FROM scan_runs WHERE status IN"
+        " ('completed','completed_with_gaps') ORDER BY id DESC LIMIT 1").fetchone()
+    return row["id"] if row else None
+
+
+def cmd_organize_plan(args, state_dir, db_path, output_dir):
+    conn = _open_db(db_path)
+    if conn is None:
+        return EXIT_USAGE
+    try:
+        from storage_audit import organizer
+        scan_id = args.scan_id if args.scan_id is not None else _latest_terminal_scan(conn)
+        if scan_id is None:
+            print("No completed scan found — run `scan` first.", file=sys.stderr)
+            return EXIT_USAGE
+        if not args.target:
+            print("--target is required (a folder OUTSIDE the scan, or a new "
+                  "'Organized' folder inside it). Nothing is created yet.",
+                  file=sys.stderr)
+            return EXIT_USAGE
+        plan_id, stats = organizer.build_plan(
+            conn, scan_id, args.target, rule=args.rule, action=args.action,
+            hash_verify=args.hash_verify)
+        print("Organization plan #{} created (DRAFT — nothing has been changed)".format(plan_id))
+        print("  Source scan:     #{}  | rule: {} | action: {}".format(
+            scan_id, args.rule, stats["action"]))
+        print("  Operations:      {}  ({} bytes, {} conflicts, {} skipped)".format(
+            stats["operations"], stats["total_bytes"], stats["conflicts"],
+            stats["skipped"]))
+        print("  Target root:     {}".format(stats["target_root"]))
+        print("  Next: python storage_audit.py organize-preview --plan-id {}".format(plan_id))
+        return EXIT_OK
+    except Exception as exc:
+        print("Could not create plan: {}".format(exc), file=sys.stderr)
+        return EXIT_INTERNAL
+    finally:
+        conn.close()
+
+
+def cmd_organize_preview(args, state_dir, db_path, output_dir):
+    conn = _open_db(db_path)
+    if conn is None:
+        return EXIT_USAGE
+    try:
+        from storage_audit.organizer import preview as preview_mod
+        out = args.output or os.path.join(output_dir, config.REPORT_SUBDIR,
+                                          "plan_{}.html".format(args.plan_id))
+        path = preview_mod.write_plan_preview(conn, args.plan_id, out)
+        print("Plan preview written: {}".format(path))
+        print("Open it in your Android browser — it is fully offline.")
+        return EXIT_OK
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_USAGE
+    finally:
+        conn.close()
+
+
+def cmd_organize_approve(args, state_dir, db_path, output_dir):
+    conn = _open_db(db_path)
+    if conn is None:
+        return EXIT_USAGE
+    try:
+        from storage_audit.organizer import executor
+        plan = conn.execute("SELECT * FROM organization_plans WHERE id = ?",
+                            (args.plan_id,)).fetchone()
+        if plan is None:
+            print("Plan #{} not found.".format(args.plan_id), file=sys.stderr)
+            return EXIT_USAGE
+        conflicts = conn.execute(
+            "SELECT COUNT(*) FROM organization_operations"
+            " WHERE plan_id = ? AND status='conflict'",
+            (args.plan_id,)).fetchone()[0]
+        print("Plan #{}: {} operations, {} bytes, action={}, conflicts={}".format(
+            plan["id"], plan["total_operations"], plan["total_bytes"],
+            plan["action"], conflicts))
+        if plan["action"] == "move":
+            print("WARNING: this is a MOVE plan — sources will be DELETED after "
+                  "verified copies.")
+        if not args.yes:
+            reply = input("Type APPROVE to approve this plan: ").strip()
+            if reply != "APPROVE":
+                print("Not approved.", file=sys.stderr)
+                return EXIT_USAGE
+        executor.approve_plan(conn, args.plan_id, note=args.note or "")
+        print("Plan #{} approved.".format(args.plan_id))
+        return EXIT_OK
+    except Exception as exc:
+        print("Approval failed: {}".format(exc), file=sys.stderr)
+        return EXIT_INTERNAL
+    finally:
+        conn.close()
+
+
+def cmd_organize_apply(args, state_dir, db_path, output_dir):
+    conn = _open_db(db_path)
+    if conn is None:
+        return EXIT_USAGE
+    try:
+        from storage_audit import organizer
+        result = organizer.apply_plan(
+            conn, args.plan_id,
+            acknowledge_source_removal=args.acknowledge_source_removal,
+            stop_on_error=args.stop_on_error,
+            limit=args.limit)
+        print("Plan #{} finished with status: {}".format(
+            args.plan_id, result["status"]))
+        print("  done={} failed={} skipped={}".format(
+            result["done"], result["failed"], result["skipped"]))
+        return EXIT_OK if result["failed"] == 0 else EXIT_INCOMPLETE
+    except Exception as exc:
+        print("Apply refused/failed: {}".format(exc), file=sys.stderr)
+        return EXIT_INTERNAL
+    finally:
+        conn.close()
+
+
+def cmd_organize_history(args, state_dir, db_path, output_dir):
+    conn = _open_db(db_path)
+    if conn is None:
+        return EXIT_USAGE
+    try:
+        rows = conn.execute(
+            "SELECT id, scan_id, rule_name, action, status, total_operations,"
+            " total_bytes, created_at_epoch FROM organization_plans"
+            " ORDER BY id DESC LIMIT ?", (args.limit,)).fetchall()
+        if not rows:
+            print("No organization plans yet.")
+            return EXIT_OK
+        print("{:<4} {:<6} {:<12} {:<10} {:<22} {:>5} {:>12}  Created".format(
+            "ID", "Scan", "Rule", "Action", "Status", "Ops", "Bytes"))
+        for r in rows:
+            ts = datetime.fromtimestamp(r["created_at_epoch"]).astimezone().strftime(
+                "%Y-%m-%d %H:%M")
+            print("{:<4} {:<6} {:<12} {:<10} {:<22} {:>5} {:>12}  {}".format(
+                r["id"], r["scan_id"], r["rule_name"], r["action"], r["status"],
+                r["total_operations"], human_bytes(r["total_bytes"]), ts))
+        return EXIT_OK
+    finally:
+        conn.close()
+
+
+def cmd_organize_show(args, state_dir, db_path, output_dir):
+    conn = _open_db(db_path)
+    if conn is None:
+        return EXIT_USAGE
+    try:
+        plan = conn.execute("SELECT * FROM organization_plans WHERE id = ?",
+                            (args.plan_id,)).fetchone()
+        if plan is None:
+            print("Plan #{} not found.".format(args.plan_id), file=sys.stderr)
+            return EXIT_USAGE
+        print("Organization plan #{}".format(plan["id"]))
+        for key in ("scan_id", "rule_name", "rule_version", "target_root",
+                    "action", "hash_verify", "status", "total_operations",
+                    "total_bytes", "conflicts", "created_at_epoch",
+                    "approved_at_epoch", "approval_note"):
+            print("  {:<18} {}".format(key + ":", plan[key]))
+        counts = conn.execute(
+            "SELECT status, COUNT(*) n FROM organization_operations"
+            " WHERE plan_id = ? GROUP BY status", (args.plan_id,)).fetchall()
+        print("  Operations by status:")
+        for r in counts:
+            print("    {:<16} {}".format(r["status"], r["n"]))
+        return EXIT_OK
+    finally:
+        conn.close()
+
+
+def cmd_organize_undo(args, state_dir, db_path, output_dir):
+    conn = _open_db(db_path)
+    if conn is None:
+        return EXIT_USAGE
+    try:
+        from storage_audit.organizer import executor
+        result = executor.undo_operation(
+            conn, args.operation_id,
+            approve_delete_copy=args.approve_delete)
+        print("Operation #{} undone: {}".format(args.operation_id, result))
+        return EXIT_OK
+    except Exception as exc:
+        print("Undo refused: {}".format(exc), file=sys.stderr)
+        return EXIT_INTERNAL
+    finally:
+        conn.close()
+
+
+def cmd_organize_cancel(args, state_dir, db_path, output_dir):
+    conn = _open_db(db_path)
+    if conn is None:
+        return EXIT_USAGE
+    try:
+        from storage_audit.organizer import executor
+        executor.cancel_plan(conn, args.plan_id)
+        print("Plan #{} cancelled.".format(args.plan_id))
+        return EXIT_OK
+    except Exception as exc:
+        print("Cancel refused: {}".format(exc), file=sys.stderr)
+        return EXIT_INTERNAL
+    finally:
+        conn.close()
+
 def cmd_list_runs(args, state_dir, db_path, output_dir):
     if not os.path.exists(db_path):
         print("No database yet at {}".format(db_path))
@@ -450,6 +714,14 @@ _COMMANDS = {
     "report": cmd_report,
     "list-runs": cmd_list_runs,
     "show-run": cmd_show_run,
+    "organize-plan": cmd_organize_plan,
+    "organize-preview": cmd_organize_preview,
+    "organize-approve": cmd_organize_approve,
+    "organize-apply": cmd_organize_apply,
+    "organize-history": cmd_organize_history,
+    "organize-show": cmd_organize_show,
+    "organize-undo": cmd_organize_undo,
+    "organize-cancel": cmd_organize_cancel,
 }
 
 

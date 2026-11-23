@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "android-storage-audit"
-version = "1.0.1"
+version = "2.0.0"
 description = "Read-only, local inventory and audit of accessible shared internal storage for Termux on Android. No network access, no root, no file modifications."
 readme = "README.md"
 requires-python = ">=3.8"
