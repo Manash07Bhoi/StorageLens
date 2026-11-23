@@ -146,8 +146,16 @@ registration flow in tests/test_cli.py (H33–H35).
 v2.2.0 test modules: V1 suite (113) + V2 engine (23) + scope security (21)
 + scope hardening (41) + CLI registration (3 of the 13 CLI tests) = **201**.
 
-Fresh PUBLIC clone verification: pending release-commit push; will be
-recorded in FINAL_AUDIT.md after the push (as v2.1.0 was). **Never executed on
-a device.** The Termux alias tests use a synthetic fixture reproducing
-`~/storage/<alias>`; the real FUSE layout on the user's phone is NOT tested.
-No claim of on-device verification is made.
+Fresh PUBLIC clone verification (executed 2026-11-23, after push): fresh
+`git clone` of Manash07Bhoi/StorageLens at HEAD `af91af8` → `--version` ⇒
+"Android Storage Audit 2.2.0 (schema 3)"; `python3 -m unittest discover -s
+tests` ⇒ **Ran 201 tests — OK**; fresh-clone smoke of the public artifact
+(Android/ refusal exit 2; recognized-folder DRAFT plan; custom-folder
+registration → plan → unregister → refused again; registry mode 0600);
+`pip wheel` ⇒ `android_storage_audit-2.2.0-py3-none-any.whl` (contains
+`organizer/scope.py`, no forbidden artifacts); authenticated GitHub API tree
+query: 86 entries, no forbidden artifacts. Evidence recorded in
+FINAL_AUDIT.md v2.2.0 addendum. **Never executed on a device.** The Termux
+alias tests use a synthetic fixture reproducing `~/storage/<alias>`; the real
+FUSE layout on the user's phone is NOT tested. No claim of on-device
+verification is made.

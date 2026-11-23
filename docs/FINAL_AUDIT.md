@@ -346,6 +346,18 @@ snapshot AND zero new `organization_plans` rows (H22, M01–M09, H14).
   PUBLICATION_PRIVACY_AUDIT.md, 2026-11-23) is unchanged and remains the
   owner's action (GitHub Support purge).
 
-**Fresh public-clone verification:** pending the release push; will be
-recorded here (as was done for v2.1.0) with the clone URL, commit hash, test
-count and `--version` output.
+**Fresh public-clone verification (executed 2026-11-23, after push):**
+`git clone https://github.com/Manash07Bhoi/StorageLens.git` (fresh, HEAD
+`af91af8`) → `python3 storage_audit.py --version` ⇒
+"Android Storage Audit 2.2.0 (schema 3)"; `python3 -m unittest discover -s
+tests` ⇒ **Ran 201 tests — OK**. Fresh-clone smoke on a synthetic tree
+(Android/data selection exits 2 with `protected_android` and a clean
+single-reason refusal; recognized `Documents/` yields a DRAFT plan under
+policy org-scope-2; unregistered custom folder exits 2 with
+`recognized_personal`; `organize-register-scope --yes` enables it; plan then
+builds; unregister revokes it; registry file mode 0600). `pip wheel` from the
+clone builds `android_storage_audit-2.2.0-py3-none-any.whl` containing
+`organizer/scope.py` and no `.zip`/`.sqlite3`/`.jsonl`/`.csv` artifacts.
+Authenticated GitHub API tree query (main, recursive): 86 entries, no
+forbidden artifacts; `organizer/scope.py` and `tests/test_scope_hardening.py`
+present. No device was involved; nothing was executed on the owner's phone.
