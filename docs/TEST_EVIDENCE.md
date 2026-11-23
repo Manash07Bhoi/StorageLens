@@ -8,15 +8,15 @@ fixtures only; no personal files were scanned.
 
 | # | Command | Result |
 |---|---|---|
-| 1 | `python3 -m unittest discover -s tests -v` | **Ran 110 tests in 1.5s — OK** (110 passed, 0 failed, 0 skipped) |
-| 2 | `python3 -m unittest discover -s .` (in `tests/`) | Ran 110 tests — OK |
+| 1 | `python3 -m unittest discover -s tests -v` | **Ran 136 tests — OK** (see V2 addendum at bottom for post-V2 numbers) |
+| 2 | `python3 -m unittest discover -s .` (in `tests/`) | Ran 136 tests — OK |
 | 3 | `node --check storage_audit/report_templates/report.js` | exits 0 |
 | 4 | `python3 tools/benchmark.py --files 10000` | measured; see `docs/PERFORMANCE.md` |
 | 5 | Manual CLI smoke (`--help`, `check`, `scan`, `report`, `list-runs`, `show-run`) on fixture | exits 0; output shown in README/§17 handoff |
 | 6 | Report builds (fixture runs, cancelled run, older-scan regeneration) | artifacts generated; metrics reconciled against DB (see FINAL_AUDIT) |
 | 7 | HTML parse sweep over every generated page (`test_report.py`) | all pages well-formed; no external URLs; links resolve |
 
-Per-module test counts (verbose output, 110 total):
+Per-module test counts (verbose output, 113 V1 + 23 V2 = 136 total; approximate split):
 
 | Module | Tests | Focus |
 |---|---|---|
@@ -26,7 +26,7 @@ Per-module test counts (verbose output, 110 total):
 | `tests/test_scanner.py` | ~17 | end-to-end fixture scans, symlink loops, hidden, sparse, cancel, mocked permission/vanish, DB-in-root exclusion |
 | `tests/test_analytics.py` | ~10 | recursive rollups, grand total once, empty dirs, same-size candidates |
 | `tests/test_exporters.py` | ~15 | CSV injection/BOM, JSONL parse+reconcile, manifest reconciliation, tree chunking, cross-export |
-| `tests/test_report.py` | ~14 | page set, escaping, offline sweep, pagination, chunk mode, cancelled labelling |
+| `tests/test_report.py` | ~15 | page set, escaping, offline sweep, pagination, chunk mode, cancelled labelling |
 | `tests/test_cli.py` | ~10 | help/version/exit codes, check gating, scan→report→list flow, report-missing-id refusal |
 
 (Approximate split; exact names: run command 1 for the full listing.)
@@ -85,3 +85,21 @@ fixed, and the full scan re-verified (1.00 GiB observed). All test results
 above are from the final code, after that fix and after the
 `unavailable_size_files` manifest fix (which now reports 0 for full-coverage
 runs instead of 27).
+
+## V2 addendum (2026-11-23, executed on dev host)
+
+| # | Command | Result |
+|---|---|---|
+| v1 | `python3 -m unittest discover -s tests` | **Ran 136 tests in 4.4s — OK** |
+| v2 | `python3 -m unittest discover -s tests -v` | 136 verbose lines, all `ok` |
+| v3 | `node --check storage_audit/report_templates/report.js` | exits 0 |
+| v4 | `python3 -m compileall -q storage_audit tests` | clean |
+| v5 | Fresh-HOME e2e organize loop (scan→plan→preview→approve→apply→undo) | completed on fixture tree |
+| v6 | Synthetic perf fixture (1,500 files): scan 0.23 s, plan 0.14 s, apply 0.67 s, peak RSS 24,212 KiB | see V2_PERFORMANCE_VALIDATION.md |
+| v7 | `git ls-files | grep -E '\.(db|sqlite3|jsonl|csv)$'` before pushes | empty (no artifacts tracked) |
+
+V2 test modules: `tests/test_organizer.py` (23 tests — planner conflict/symlink/containment, gating, apply, undo, reconcile, hash-verify corruption detection, insufficient-space refusal, destination-appearing sentinel), plus V1 modules updated for schema v2 (`test_database.py` expects `SCHEMA_VERSION`/user_version=2/migrations [1,2]) and CLI help (`test_cli.py` expects 2.0.0).
+
+Per-module counts updated: V1 suite 113 tests + V2 23 = **136**.
+
+**Never executed:** any test on a physical Android device. V2 on-device performance, executor behavior across FUSE/scoped-storage, and Termux permission interactions are all **NOT TESTED** (see V2_ACCEPTANCE_CRITERIA.md gates J and V2 device items).

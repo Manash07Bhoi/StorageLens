@@ -181,3 +181,38 @@ mobile/a11y verified manually only. On-device acceptance steps are in
 
 **Final wording (unchanged): V1 implementation complete; on-device
 validation pending.**
+
+---
+
+## V2 addendum — 2026-11-23 (v2.0.0)
+
+**What shipped (host-validated only):** planning-first organization engine —
+`organize-plan/preview/approve/apply/history/show/undo/cancel`; schema v2
+(additive migration); offline dark HTML preview of plans; explicit approval
+gate enforced in code; copy→fsync→verify journaling; copy-keep default;
+move double-consent; never overwrites; interrupted applies reconciled; undo
+refuses on changed files. See `V2_*` docs and `CHANGELOG.md`.
+
+**Verification re-run after all doc edits (release line):**
+`python3 -m unittest discover -s tests` → `Ran 136 tests ... OK`;
+`python3 -m compileall` clean; `node --check` exits 0; wheel builds with
+`storage_audit/organizer/*` and templates included.
+
+**Device reality:** one V1 run on Android 15 (owner-executed, private
+artifact) revealed two mount-boundary skips mislabelled as "containment" —
+fixed in v1.0.1 (`operation=mount_boundary`), **not re-validated on-device**.
+V2 has never run on a device.
+
+**Publication history (2026-11-23):** private report ZIP was briefly public
+via owner's web upload (commit range removed by owner-authorized history
+rewrite; repo stayed PUBLIC). CDN cache may retain copies — see
+`PUBLICATION_PRIVACY_AUDIT.md` for the honest residual-exposure statement and
+owner actions (re-clone; optional GitHub Support purge).
+
+**Gates:** A PARTIAL (device) · B PASS host · C PASS host · D PASS host ·
+E PASS · F PASS · G PASS · H PASS host · I PARTIAL · J NOT TESTED · K PASS
+(with cache caveat) · L PASS. Critical defects open: 0.
+
+**Final wording (unchanged): v2.0.0 is a public source release, host-validated.
+It is NOT Android-validated, NOT production-for-phone-proven; the owner's
+on-device acceptance run is the next milestone (M2).**

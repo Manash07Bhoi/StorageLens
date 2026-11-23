@@ -1,4 +1,5 @@
-# Android Storage Audit V1 — packaging metadata.
+# Android Storage Audit — packaging metadata. V1 scan is read-only; V2 adds
+# an opt-in, approval-gated organization engine (organize-* commands).
 # Runtime has NO dependencies beyond the Python 3 standard library.
 
 [build-system]
@@ -8,14 +9,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "android-storage-audit"
 version = "2.0.0"
-description = "Read-only, local inventory and audit of accessible shared internal storage for Termux on Android. No network access, no root, no file modifications."
+description = "Read-only inventory and audit of Android shared internal storage for Termux, plus an opt-in, approval-gated organization engine. V1 scan never modifies files; V2 organize commands change files only with explicit logged approval and never overwrite existing files. No network, no root."
 readme = "README.md"
 requires-python = ">=3.8"
 license = { text = "MIT" }
 authors = [
     { name = "Android Storage Audit contributors" },
 ]
-keywords = ["android", "termux", "storage", "audit", "inventory", "read-only"]
+keywords = ["android", "termux", "storage", "audit", "inventory", "read-only", "organization"]
 classifiers = [
     "Environment :: Console",
     "Intended Audience :: End Users/Desktop",
@@ -27,14 +28,15 @@ classifiers = [
 # No runtime dependencies — stdlib only, by design (spec §1.3).
 dependencies = []
 
-# No [project.urls] section: no public repository or documentation URL exists
-# for this project yet, and none is invented.
+[project.urls]
+Homepage = "https://github.com/Manash07Bhoi/StorageLens"
+Issues = "https://github.com/Manash07Bhoi/StorageLens/issues"
 
 [project.scripts]
 storage-audit = "storage_audit.cli:main"
 
 [tool.setuptools]
-packages = ["storage_audit"]
+packages = ["storage_audit", "storage_audit.organizer"]
 
 [tool.setuptools.package-data]
 storage_audit = ["report_templates/*"]

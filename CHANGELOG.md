@@ -4,6 +4,51 @@ All notable changes to Android Storage Audit are recorded here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] — 2026-11-23
+
+### Added (V2 — planning-first organization engine, M1)
+
+- **Schema v2** (additive, forward-only migration; `user_version=2`):
+  `organization_plans`, `organization_operations`, `organization_events`.
+- **Organization planner** — builds a DRAFT plan mapping every inventoried
+  file into `<target>/<Category>/<original relative path>`. Refuses symlinks;
+  flags conflicts (`existing_destination` / `duplicate_destination`) without
+  ever overwriting; target root must be inside the scanned root.
+- **Offline HTML preview** (`organize-preview`) — one self-contained dark
+  page: every operation, live search, pagination, fully escaped data.
+- **Explicit approval gate** (`organize-approve`) — execution is refused from
+  the `draft` state in code.
+- **Copy-keep apply engine** (`organize-apply`) — copy → fsync → verify
+  (size+mtime, or SHA-256 with `--hash-verify`) → journal per operation.
+  Move mode additionally requires `--acknowledge-source-removal` and removes a
+  source only after its destination verifies. `--stop-on-error` marks the plan
+  `recovery_required` and halts safely.
+- **Undo** (`organize-undo`) — restores moves (copy-verify-remove, with
+  same-filesystem fast path); copy-keep undo deletes the created copy only
+  with `--approve-delete`. Refuses when the file changed since execution.
+- **Interrupted apply** — `in_progress` operations reconciled to
+  `interrupted` on next command; nothing is ever assumed complete.
+- `organize-history`, `organize-show`, `organize-cancel`.
+
+### Fixed
+
+- Destination free-space pre-check over-reserved (~1 MiB per file): a 15 MB
+  copy-keep apply over 1,500 small files was refused with a projected
+  1.5 GB requirement. Now `payload + fixed 64 MiB headroom`.
+
+### Security
+
+- Destinations must remain inside the approved target root (realpath check at
+  plan time and apply time). No overwrites, ever — verified at plan time and
+  again immediately before each write.
+
+### Notes
+
+- **Not on-device validated** — all V2 evidence is from the Linux x86_64 dev
+  host with synthetic fixtures. The V1 report from the owner's Android 15
+  phone remains a PRIVATE artifact and is not in this repository.
+- v1 scans remain fully compatible; `report` and V1 pages are unchanged.
+
 ## [1.0.1] — 2026-11-23
 
 ### Fixed

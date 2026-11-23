@@ -51,7 +51,7 @@ means: what Termux can see, not the whole device.
 ## 3. Commands tested and environment used
 
 **Tested environment:** Linux x86_64 (development container), Python 3.13.18,
-`python3 -m unittest discover -s tests` → 110 tests OK. The pipeline below
+`python3 -m unittest discover -s tests` → 136 tests OK. The pipeline below
 (`check`, `scan`, `report`) was executed against synthetic fixtures and a
 1 GiB sparse-file fixture on that host.
 
@@ -149,6 +149,12 @@ Override with `--db`, `--output-dir`, or `XDG_DATA_HOME`.
 
 ## 9. What this guide does NOT claim
 
-No on-device results exist yet. Claims about behavior on your specific ROM,
-Android version, and Termux build will be true only after you run the
-handoff steps in `README.md` §5–§6 on the device.
+One V1 run has been executed on an Android 15 / Termux device (by the owner,
+not by the development agent): 8,584 files + 165 dirs, 42.36 GiB,
+`completed_with_gaps` (two FUSE mounts not crossed). The resulting report was
+generated on-device. **The v1.0.1 correctness fix has not been re-verified on
+that phone, and no V2 command has been run on it.** Any other claim about your
+specific ROM, Android version, and Termux build is true only after you run
+the handoff steps on the device. If you have a phone clone of this repository
+from before 2026-11-23, delete it and re-clone — the earlier history contained
+a private artifact (see `docs/PUBLICATION_PRIVACY_AUDIT.md`).
