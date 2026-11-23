@@ -35,15 +35,22 @@ storage require the same `~/storage/shared` access. Root never required.
 - Physical theft/unlocked device: OS responsibility.
 - Git-history exposure incident from 2026-11-23 — see PUBLICATION_PRIVACY_AUDIT.md.
 
-## Scope policy (org-scope-1) — added in v2.1.0
+## Scope policy (org-scope-2) — added in v2.1.0, corrected in v2.2.0
 
 The organization engine is default-deny. Exactly one explicitly selected,
 user-owned folder may be organized at a time; selection must pass
 `validate_scope()` (existence, directory, no symlink escapes anywhere in the
-argument path, not Android/ nor hidden nor reserved, not a protected system
-prefix (`/system`, `/vendor`, `/product`, `/apex`, `/odm`, `/data`, …), not
+argument path — the only resolved symlinks are documented Termux
+`~/storage/<alias>` names whose target is the permitted shared-storage root,
+not Android/ nor hidden nor reserved, not a protected system prefix
+(`/system`, `/vendor`, `/product`, `/apex`, `/odm`, `/data`, …), not
 Termux-private (`PREFIX`, `/data/…`), not the filesystem root/home/shared
-storage root, no cross-boundary mount). Recursive traversal enforces the same
+storage root, no cross-boundary mount), and — new in org-scope-2 — the
+selection must be a recognized personal folder or explicitly registered by the
+user on this device (visibility is not ownership). Registration of a custom
+folder can never clear Android/, system, application-private, Termux-private,
+hidden, reserved or cross-boundary locations. Recursive
+traversal enforces the same
 exclusions at every level; execution revalidates the scope and each operation;
 undo revalidates again. There is no override, no bypass flag, no config escape
 hatch. See ORGANIZATION_SCOPE_SECURITY_TESTS.md. The scan NEVER grants

@@ -12,7 +12,7 @@ current state. Newly discovered items are suffixed V2.
 | G-006 | Android | `Android/data`, `Android/obb` untraversable | Medium | scoped storage (platform) | inventory ends at those two dirs | OPEN — documented; by design; report labels boundary |
 | G-007 | Report | files.html inline dataset not machine-verifiable without running JS | Low | design (perf choice) | audit friction | PARTIAL — exports.xlsx-free JSONL is the machine-readable path; verified |
 | G-101 | V1 scan | Issue taxonomy: mount boundary labelled "containment" | Medium | wrong operation string | misread coverage note | **FIXED v1.0.1** (operation=mount_boundary; precise coverage notes); on-device revalidation NOT TESTED |
-| G-102 | V1 docs | Docs claimed "110 tests" (actual grew) | Low | test additions | stale docs | FIXED — all docs reference 157 (v2.1.0) |
+| G-102 | V1 docs | Docs claimed "110 tests" (actual grew) | Low | test additions | stale docs | FIXED — all docs reference 157 (v2.1.0) / 201 (v2.2.0) |
 | G-V2-001 | V2 engine | Free-space precheck over-reserved (1 MiB × N files) | Medium | wrong model | false refusal on small trees | FIXED (payload + 64 MiB); test added; caught by benchmark |
 | G-V2-002 | V2 engine | Dest vanish/appear races remain path-based (no dirfd API) | Low | platform limits | theoretical overwrite window | MITIGATED — execution-time lexists re-check + verify; documented in PATH_SECURITY_VALIDATION.md |
 | G-V2-003 | V2 preview | No column sorting; AT not audited; large-plan density | Low | M1 scope | usability | OPEN — M3 enhancement; not a defect for M1 |
@@ -26,10 +26,18 @@ current state. Newly discovered items are suffixed V2.
 | G-V2-011 | SECURITY.md | Security policy lacked V2 engine invariants | Low | doc drift | incomplete guidance | FIXED — SECURITY.md updated for V2 invariants |
 | G-V2-012 | CI | No automated CI running tests | Low | no CI in repo | regressions rely on manual runs | OPEN — documented; tests run locally pre-push; CI optional for M2 |
 | G-V2-013 | V2 scope | **BLOCKER CLASS: planner used whole-scan sources; entire shared-storage root organizable** (would organize Android/media and all other accessible content) | High | candidates came from the V1 scan, not an approved selection | Android/ + ordinary content could be planned | **CLOSED v2.1.0** — org-scope-1: explicitly selected, validated user-owned folder only; fresh lstat walk; default-deny recursion; execution-time revalidation; 20 mandatory security tests; ORGANIZATION_SCOPE_SECURITY_TESTS.md |
+| G-V2-014 | V2 scope | validate_scope() stored the RAW argument as `canonical` (nested closure read `locals()`); unnormalized argv (`a/../b`, `~`, double slashes, relative) persisted into plans | High | closure over locals that cannot see enclosing scope | TOCTOU/manifest mismatch; plan records unreviewed path | **CLOSED v2.2.0** — canonical computed once and passed explicitly; regression tests H01–H06 + plan-manifest assertion |
+| G-V2-015 | V2 scope | Documented Termux `~/storage/<alias>` layout rejected by blanket symlink ban; `~/storage/shared/Download` selection impossible | High | over-broad `_symlink_escape()` | feature broken on device; pressure to weaken control | **CLOSED v2.2.0** — strict trusted-alias resolution (documented names; realpath inside permitted shared storage; result re-validated); arbitrary escapes remain rejected (H07–H13); NO control weakened |
+| G-V2-016 | V2 scope | **Visibility treated as ownership**: any visible, non-hidden, non-Android folder validated out of the box | High | missing allowlist/registration policy | merely-visible folders organized without user consent | **CLOSED v2.2.0** — recognized personal-folder allowlist; explicit user registration (mode-0600 registry, confirmation, revocation at apply/undo); registration can never clear Android/ system application-private Termux-private hidden reserved or cross-boundary locations (H14–H22) |
+| G-V2-017 | V2 scope | Policy drift silently tolerated (plan org-scope-1 → binary enforcing org-scope-2) | Low | no mismatch telemetry | audit opacity | **CLOSED v2.2.0** — `scope_policy_mismatch` event journalled at apply; current policy always re-applied; H31 |
 
-**Counts:** Critical 1 (G-V2-006, closed) · High 2 (1 closed, G-001 open/blocked) ·
-Medium 7 (2 fixed, rest open/NOT TESTED) · Low 9 (mixed fixed/open/accepted).
+**Counts:** Critical 1 (G-V2-006, closed) · High 6 (4 closed incl. v2.2.0 fixes; G-001 open/blocked; G-006 by-design) ·
+Medium 7 (2 fixed, rest open/NOT TESTED) · Low 10 (mixed fixed/open/accepted).
 
-**Release posture v2.1.0:** no open Critical/High code defects. org-scope-1 enforcement added (v2.1.0) closing G-V2-013.
-G-001 (device validation) blocks any claim of Android-readiness; V2 remains a
-host-validated release with device steps documented.
+**Release posture v2.2.0:** v2.1.0 was NOT accepted (independent review
+2026-11-23); the blocking findings are closed in v2.2.0 with regression
+evidence (201 tests). No open Critical/High code defects. G-001 (physical
+device validation) remains BLOCKED and blocks any claim of
+Android-readiness; V2 remains a host-validated release with device steps
+documented (read-only checks + disposable test folder — see
+docs/ANDROID_TERMUX_GUIDE.md and FINAL_AUDIT.md v2.2.0 addendum).

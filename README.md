@@ -198,22 +198,30 @@ Commands (all local, offline, no network):
 | Command | What it does |
 |---|---|
 | `organize-plan --scope FOLDER [--action copy-keep\|move] [--hash-verify] [--scan-id N]` | Build a DRAFT plan scoped to ONE explicitly selected, user-owned folder (e.g. `Documents/`): a fresh lstat walk of that folder only maps every eligible file to `<scope>/<Category>/<original relative path>`. Android/, system, Termux-private, hidden and reserved content is default-deny at every level and never becomes an operation. Conflicts are flagged, never silently overwritten. (`--target` remains as a compatibility alias.) |
-| `organize-preview --plan-id N` | Write a fully offline, premium dark HTML preview: scope panel (selection, canonical path, policy org-scope-1, eligible/excluded counts, reason breakdown, per-check validation), every operation (filterable/paginated). Review before approving. |
+| `organize-preview --plan-id N` | Write a fully offline, premium dark HTML preview: scope panel (selection, canonical path, policy org-scope-2, eligible/excluded counts, reason breakdown, per-check validation), every operation (filterable/paginated). Review before approving. |
 | `organize-approve --plan-id N` | Explicit approval (typed `APPROVE` by default). Moves require double consent (`--action move` at plan time AND `--acknowledge-source-removal` at apply time). |
 | `organize-apply --plan-id N [--acknowledge-source-removal]` | The approved scope is **re-validated from scratch** before anything runs (refusal is journalled); then copy → fsync → verify (size+mtime, or SHA-256 with `--hash-verify`) → journal every step. Copy-keep never deletes; move removes a source only after its destination verifies. |
 | `organize-history` / `organize-show --plan-id N` | Plan history, scope manifest, counters from the audit journal. |
 | `organize-undo --operation-id N [--approve-delete]` | Same scope revalidation. Move: copy the destination back to the (now-free) source path. Copy-keep: delete the created copy, only with `--approve-delete`. Refuses if the file changed since execution. |
 | `organize-cancel --plan-id N` | Cancel a draft/approved plan. |
+| `organize-register-scope --scope FOLDER [--note TEXT] [--yes]` | Explicitly register a **custom user-owned folder** so it can be selected for organization. Recognized personal folders (Download, Documents, Pictures, DCIM, Music, Movies, …) need no registration. Android/, system, application-private, Termux-private, hidden, reserved and cross-boundary locations **can never be registered** — there is no override. Without `--yes` the command requires interactive re-typing of the canonical path. Registry is private (mode 0600) on this device only. |
+| `organize-unregister-scope --scope FOLDER` | Remove a custom folder from the registry (revokes future plans immediately; already-approved plans fail revalidation at apply/undo). |
+| `organize-scopes` | List explicitly registered custom folders. |
 
-**Safety properties, enforced in code and tests (org-scope-1):** explicit
+**Safety properties, enforced in code and tests (org-scope-2):** explicit
 selection only · Android/ & system & Termux-private & hidden & reserved =
-default-deny everywhere in the path, every depth · sources AND destinations
-validated at execution time · scope re-validated before apply and undo ·
-no approval → no execution · no overwrite, ever · no source removal before
-destination verification · symlinks never followed · interrupted operations
-marked, never assumed complete · full journal in `organization_events`.
+default-deny everywhere in the path, every depth · visibility is never
+ownership — only recognized personal folders or explicitly registered
+custom folders can be organized · the documented Termux `~/storage/<alias>`
+symlinks resolve only through a strict trusted-alias check (final canonical
+destination re-validated; arbitrary symlinks rejected) · sources AND
+destinations validated at execution time · scope re-validated before apply
+and undo · registry revocation fails any pending plan closed · no approval →
+no execution · no overwrite, ever · no source removal before destination
+verification · symlinks never followed · interrupted operations marked, never
+assumed complete · full journal in `organization_events`.
 
-**Scope of V2 today (v2.1.0, honest):** one rule (`by-category`), in-folder
+**Scope of V2 today (v2.2.0, honest):** one rule (`by-category`), in-folder
 reorganization only, local moves/copies only, offline HTML preview, no
 recommendation engine, no native app. On-device execution has **not** been
 validated (only the Linux host) — see [Validation status](#validation-status).
@@ -223,7 +231,7 @@ Roadmap: `docs/V2_ROADMAP.md`.
 
 ## Command reference
 
-Actual `python3 storage_audit.py --help` output (v2.1.0):
+Actual `python3 storage_audit.py --help` output (v2.2.0):
 
 ```
 usage: storage_audit.py [-h] [--version] [--db DB] [--output-dir OUTPUT_DIR]
@@ -236,7 +244,7 @@ explicitly selected, user-owned folder. The scan never modifies, moves,
 renames or deletes source files. V2 'organize-*' commands change files ONLY
 after an explicit, logged approval, never overwrite existing files, and NEVER
 touch Android/, system, application-private, Termux-private, hidden or
-reserved locations (policy org-scope-1). No network access.
+reserved locations (policy org-scope-2). No network access.
 
 positional arguments:
   COMMAND
@@ -256,6 +264,15 @@ positional arguments:
     organize-show       V2: show one organization plan
     organize-undo       V2: undo one completed operation
     organize-cancel     V2: cancel a draft/approved plan
+    organize-register-scope
+                        V2: explicitly register a CUSTOM user-owned folder so
+                        it can be selected for organization (recognized
+                        personal folders need no registration). Prohibited
+                        locations can never be registered.
+    organize-unregister-scope
+                        V2: remove a folder from the custom-scope registry
+    organize-scopes     V2: list explicitly registered custom organization
+                        scopes
 
 options:
   -h, --help            show this help message and exit
@@ -460,14 +477,16 @@ bash run_audit.sh check
 
 ## Status & validation
 
-**v2.1.0 source released (public), host-validated; on-device acceptance is
-the user's next step.** The code is fully tested on the development host
-(Linux x86_64, 157 tests). One V1 run was executed on the owner's Android 15
-phone — by the owner, not by the development agent; its artifacts are private
-user data and are not in this repository. The first V2 on-device run is the
-owner's acceptance step — see
+**v2.2.0 source released (public), host-validated; on-device acceptance is
+the owner's next step. v2.1.0 was NOT accepted — this release corrects the
+issues found in its independent review.** The code is fully tested on the
+development host (Linux x86_64, 201 tests — see `docs/TEST_EVIDENCE.md`). No
+physical Android run has been performed for V2; the on-device trial is the
+owner's acceptance step and must start with a disposable test folder — see
 [Validation status](#validation-status) and
-[docs/FINAL_AUDIT.md](docs/FINAL_AUDIT.md).
+[docs/FINAL_AUDIT.md](docs/FINAL_AUDIT.md). One V1 run was executed on the
+owner's Android 15 phone — by the owner, not by the development agent; its
+artifacts are private user data and are not in this repository.
 
 ## What this tool is NOT
 
@@ -476,7 +495,7 @@ owner's acceptance step — see
   the *accessible shared-storage tree* only.
 - Not a background service — it runs when you run it.
 - Not a cloud uploader — there is no network code anywhere in the project.
-- v2.1.0 is not a cleaner and not "smart": one explicitly selected,
+- v2.2.0 is not a cleaner and not "smart": one explicitly selected,
   validated personal folder only, organized by category, with explicit
   approval — never Android/, system, application-private or Termux-private
   data.
@@ -484,8 +503,11 @@ owner's acceptance step — see
 ## Roadmap
 
 Shipped: **v1.0.1** (V1 correctness fixes) · **v2.0.0** (V2 planning-first
-organization engine, M1) · **v2.1.0** (org-scope-1 policy: Android/, system,
-Termux-private, hidden & reserved default-deny) — see [CHANGELOG.md](CHANGELOG.md).
+organization engine, M1) · **v2.1.0** (org-scope-1 policy) · **v2.2.0**
+(org-scope-2 policy: v2.1.0 review corrections — canonical-path propagation
+fix, trusted Termux storage aliases, recognized-personal-folder allowlist
+with explicit custom-folder registration; Android/, system, Termux-private,
+hidden & reserved remain default-deny) — see [CHANGELOG.md](CHANGELOG.md).
 
 - **M2:** on-device acceptance run + device benchmarks; compare scan runs;
   richer rule plugins.

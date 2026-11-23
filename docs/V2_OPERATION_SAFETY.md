@@ -22,7 +22,7 @@ G8. **Undo is conservative.** Move undo: destination must match recorded size;
 G9. **Symlinks: never followed, copied or moved.** Recorded, refused, logged.
 G10. **Target containment.** Destinations are realpath-checked against the
      approved target root at apply time (not only at plan time).
-G11. **Organization scope (org-scope-1) — default-deny.** The engine may only
+G11. **Organization scope (org-scope-2) — default-deny.** The engine may only
      act inside ONE explicitly selected, user-owned folder. Android/ (all of
      it), operating-system and application-private directories, all
      app/Termux-private storage, hidden directories, reserved names and

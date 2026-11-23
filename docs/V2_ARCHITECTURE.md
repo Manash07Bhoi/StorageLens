@@ -10,7 +10,7 @@ unchanged in behavior. Shared pieces: `database.connect/migrate`, `config`,
 ```
 storage_audit/organizer/
 ├── __init__.py      package exports
-├── scope.py         org-scope-1: validate_scope(), walk_eligible(),
+├── scope.py         org-scope-2: validate_scope(), walk_eligible(),
 │                    op_path_check() — the default-deny boundary
 ├── planner.py       build_plan(): ONE explicitly selected user-owned
 │                    folder → DRAFT plan (lstat walk; no file writes)
@@ -24,7 +24,7 @@ storage_audit/organizer/
 ## Data flow
 ```
 ONE explicitly selected, user-owned folder ─── USER SELECTION (mandatory)
-      │  org-scope-1 validate_scope() — default-deny (Android/, system,
+      │  org-scope-2 validate_scope() — default-deny (Android/, system,
       │  Termux-private, hidden, reserved, cross-boundary, symlink escape)
       ▼
 walk_eligible() ─── fresh lstat walk OF THE SCOPE ONLY; exclusions recorded
@@ -66,7 +66,7 @@ organize-undo ──► same scope revalidation; move: dst→src (rename |
 10. Dry-run is the default: `organize-plan` writes only DB rows; the user
     creates the HTML preview explicitly.
 11. Sources and destinations BOTH stay inside the approved scope; the scope
-    is revalidated before apply and before undo (org-scope-1, G11–G13).
+    is revalidated before apply and before undo (org-scope-2, G11–G13).
 
 ## Deliberate non-goals of M1
 No recommendation engine, no dedup, no native UI, no background worker, no

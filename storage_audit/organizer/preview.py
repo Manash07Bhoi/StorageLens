@@ -60,7 +60,7 @@ def render_plan_preview(conn, plan_id):
                             len(skipped_events),
                             "y was" if len(skipped_events) == 1 else "ies were")
 
-    # --- org-scope-1 panel ---
+    # --- org-scope-2 panel ---
     def plan_get(key, default=None):
         try:
             value = plan[key]

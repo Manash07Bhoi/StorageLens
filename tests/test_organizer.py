@@ -25,20 +25,29 @@ from storage_audit import classifier
 class OrganizerTestCase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="audit_org_test_")
-        self.fixture = os.path.join(self.tmp, "phone")
+        # Hermetic scope registry: never touch the real user registry.
+        self._old_xdg = os.environ.get("XDG_DATA_HOME")
+        os.environ["XDG_DATA_HOME"] = os.path.join(self.tmp, "xdg")
+        self.fixture = os.path.join(self.tmp, "CustomStudyFolder")
         build_rich_fixture(self.fixture)
         self.db = os.path.join(self.tmp, "test.sqlite3")
         self.out = os.path.join(self.tmp, "out")
-        # Under org-scope-1 the organization scope is the selected folder
-        # itself: operations stay inside it. Use the synthetic fixture as the
-        # user-owned folder to organize (never real user data).
+        # Under org-scope-2 the organization scope is the selected folder
+        # itself: operations stay inside it. The fixture uses a CUSTOM folder
+        # name, so it must be explicitly registered before organization —
+        # exactly the flow a real user follows for non-standard folders.
         self.target = self.fixture
+        scope_mod.register_scope(self.fixture)
         result = run_scan(self.fixture, db_path=self.db, output_dir=self.out,
                           progress=False)
         self.scan_id = result["run_id"]
         self._scope_snapshot = sorted(os.listdir(self.fixture))
 
     def tearDown(self):
+        if self._old_xdg is None:
+            os.environ.pop("XDG_DATA_HOME", None)
+        else:
+            os.environ["XDG_DATA_HOME"] = self._old_xdg
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def conn(self):
@@ -138,7 +147,7 @@ class TestPlanner(OrganizerTestCase):
             conn.close()
         self.assertEqual(plan["status"], "draft")
         self.assertEqual(plan["action"], "copy-keep")
-        self.assertEqual(plan["scope_policy_version"], "org-scope-1")
+        self.assertEqual(plan["scope_policy_version"], "org-scope-2")
         self.assertEqual(plan["scope_canonical"],
                          os.path.realpath(self.target))
         self.assertGreaterEqual(plan["excluded_entries"], 1)  # hidden + links

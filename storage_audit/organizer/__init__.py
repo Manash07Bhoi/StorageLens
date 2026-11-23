@@ -14,7 +14,7 @@ Safety invariants (enforced in code and tested):
 * Symlinks are never followed or moved; special files are refused.
 * The organization scope is one explicitly selected, user-owned folder.
   Android/, system, Termux-private, hidden and reserved content is
-  default-deny at every level (org-scope-1, see scope.py) — no overrides.
+  default-deny at every level (org-scope-2, see scope.py) — no overrides.
 * Destinations (and sources) must stay inside the approved scope; the scope
   is revalidated at plan time, before execution and before undo.
 * Every operation is journalled; interrupted operations are detectable.

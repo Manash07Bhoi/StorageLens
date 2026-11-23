@@ -1,4 +1,4 @@
-"""MANDATORY organization-scope security tests (org-scope-1).
+"""MANDATORY organization-scope security tests (org-scope-2).
 
 Maps 1:1 to the twenty required cases in ORGANIZATION_SCOPE_SECURITY_TESTS.md.
 Every prohibited case demonstrates that NO organization operation is executed
@@ -48,6 +48,9 @@ def _tree_snapshot(root):
 class ScopeTestCase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="scope_sec_test_")
+        # Hermetic scope registry: never touch the real user registry.
+        self._old_xdg = os.environ.get("XDG_DATA_HOME")
+        os.environ["XDG_DATA_HOME"] = os.path.join(self.tmp, "xdg")
         self.phone = os.path.join(self.tmp, "shared")   # synthetic shared store
         os.makedirs(self.phone)
         # Permitted user-owned content
@@ -82,6 +85,10 @@ class ScopeTestCase(unittest.TestCase):
         self.out = os.path.join(self.tmp, "out")
 
     def tearDown(self):
+        if self._old_xdg is None:
+            os.environ.pop("XDG_DATA_HOME", None)
+        else:
+            os.environ["XDG_DATA_HOME"] = self._old_xdg
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def make_scan(self):

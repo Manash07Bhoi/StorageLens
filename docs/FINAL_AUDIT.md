@@ -274,3 +274,78 @@ relies on path rules that hold regardless of FUSE internals. The v2.0.0
 "organize entire scan" behaviour no longer exists; any plan built under
 v2.0.0 semantics would be a different, broader scope and is impossible to
 build in v2.1.0.
+
+## v2.2.0 addendum — 2026-11-23 (org-scope-2: independent-review corrections)
+
+**Trigger:** independent product-owner review of PUBLIC v2.1.0 found three
+defects; v2.1.0 was explicitly NOT declared accepted. The owner's correction
+order is reproduced in `CHANGELOG.md` [2.2.0]. This addendum records what was
+actually done and what was NOT verified.
+
+**Findings confirmed in source before fixing:**
+1. `validate_scope()` nested `validation()` read `locals().get("canonical", path)`;
+   the enclosing function's `canonical` was invisible to the closure, so the
+   RAW argument (unnormalized) was stored as `canonical` in the returned
+   validation and persisted by the planner (`scope_canonical`,
+   `scope_validation_json`, `target_root`). **Fix:** canonical is computed
+   once in the enclosing scope and passed explicitly; failure-path validation
+   reports a consistent canonical too. Regression tests H01–H06 plus a
+   plan-manifest assertion.
+2. `_symlink_escape()` rejected EVERY symlink component, making the documented
+   `~/storage/shared/Download` selection (a `termux-setup-storage` symlink)
+   impossible. **Fix:** strict trusted-alias resolution — only documented
+   alias names under `~/storage`, only when the alias is a symlink (or plain
+   dir) whose realpath is the permitted shared-storage root or inside it,
+   only when the permitted root is determinable; the resolved path is then
+   re-validated like any other selection. Arbitrary escapes, undocumented
+   names, alias-targets outside the root, and any symlink below the resolved
+   root remain rejected (H07–H13). No control weakened.
+3. "Visible = selectable": any non-hidden, non-Android visible folder
+   validated out of the box. **Fix:** recognized personal-folder allowlist
+   (case-insensitive; immediate child of shared storage or selection basename
+   on a dev host); every other visible folder requires EXPLICIT registration
+   by the user on this device (`organize-register-scope`, interactive
+   confirmation, mode-0600 registry, `organize-unregister-scope` to revoke;
+   `organize-scopes` to list). Registration can NEVER clear Android/,
+   system, application-private, Termux-private, hidden, reserved or
+   cross-boundary locations — `register_scope()` runs full prohibited-class
+   validation first. Registry reads fail closed; recognized folders do not
+   depend on the registry; revocation invalidates pending plans at apply AND
+   at undo (`revalidate_plan_scope()`). Ownership is never inferred from
+   visibility (H14–H22).
+
+**Branch audit performed** (path normalization, symlink resolution,
+storage-root discovery incl. `STORAGE_AUDIT_SHARED_ROOT`, mount-boundary
+detection incl. unstatable-parent fail-closed, source/destination
+operation checks, post-plan scope changes — deletion, symlink replacement,
+registry revocation — apply-time revalidation, undo revalidation, policy
+drift telemetry journalled as `scope_policy_mismatch`). Tests H23–H31 plus
+H25–H28 cover these branches; the Termux layout is exercised with a
+synthetic `~/storage/<alias>` fixture (the real FUSE layout was NOT tested).
+
+**Rejection integrity (item 5 of the correction order):** for every
+rejection path the tests assert BOTH a refusal AND an unchanged filesystem
+snapshot AND zero new `organization_plans` rows (H22, M01–M09, H14).
+
+**Suite:** 201 tests, all PASS (was 157). Per-module counts in
+`docs/TEST_EVIDENCE.md`. Full branch coverage of the new policy is listed in
+`docs/ORGANIZATION_SCOPE_SECURITY_TESTS.md`.
+
+**Explicitly NOT done / NOT claimed:**
+- No physical Android device was used at any point. The Termux alias
+  resolution is validated only against a synthetic fixture. FUSE behaviour,
+  the real `~/storage` symlink farm, and Android 15 specifics remain
+  **NOT TESTED**.
+- v2.2.0 is NOT a claim of acceptance. The owner must review the evidence and
+  run the device trial (read-only checks first, then a disposable test
+  folder) before any organization command touches real content.
+- No personal files were read, moved, modified or organized at any point.
+- GitHub repository remained public throughout; private scan data was not
+  used or committed.
+- The pre-existing GitHub CDN exposure of the rewritten history (see
+  PUBLICATION_PRIVACY_AUDIT.md, 2026-11-23) is unchanged and remains the
+  owner's action (GitHub Support purge).
+
+**Fresh public-clone verification:** pending the release push; will be
+recorded here (as was done for v2.1.0) with the clone URL, commit hash, test
+count and `--version` output.

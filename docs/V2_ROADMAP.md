@@ -40,3 +40,13 @@ availability, supply-chain review) in DECISIONS.md.
   before execution and before undo; documented 20-case security test suite.
 - Schema v3 (scope manifest on organization_plans); preview renders the scope
   panel; CLI `--scope` flag (`--target` kept as compatibility alias).
+
+## Shipped increment v2.2.0 (2026-11-23, corrective — independent review)
+- org-scope-2 policy: canonical-path propagation fixed; trusted Termux
+  `~/storage/<alias>` resolution; recognized personal-folder allowlist with
+  explicit custom-folder registration (`organize-register-scope` /
+  `organize-unregister-scope` / `organize-scopes`); registry mode-0600 and
+  fail-closed; revocation enforced at apply and undo. Android/, system,
+  Termux-private, hidden/reserved remain default-deny with NO override.
+- Suite 157 → 201 tests (tests/test_scope_hardening.py + CLI registration
+  tests). v2.1.0 was not accepted; see FINAL_AUDIT.md v2.2.0 addendum.

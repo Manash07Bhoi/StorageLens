@@ -51,7 +51,7 @@ means: what Termux can see, not the whole device.
 ## 3. Commands tested and environment used
 
 **Tested environment:** Linux x86_64 (development container), Python 3.13.18,
-`python3 -m unittest discover -s tests` → 157 tests OK. The pipeline below
+`python3 -m unittest discover -s tests` → 201 tests OK (v2.2.0). The pipeline below
 (`check`, `scan`, `report`) was executed against synthetic fixtures and a
 1 GiB sparse-file fixture on that host.
 
@@ -158,3 +158,130 @@ specific ROM, Android version, and Termux build is true only after you run
 the handoff steps on the device. If you have a phone clone of this repository
 from before 2026-11-23, delete it and re-clone — the earlier history contained
 a private artifact (see `docs/PUBLICATION_PRIVACY_AUDIT.md`).
+
+## 10. v2.2.0 device trial — read-only checks first, then a disposable folder
+
+**Nothing in Phase A modifies anything.** Phase B creates and later removes
+ONLY a brand-new, synthetic folder you name yourself — it never touches your
+personal files. Do not run Phase B, and do not run any `organize-apply`
+against your real folders (`Download`, `DCIM`, `Pictures`, …), until you have
+reviewed Phase A output and explicitly approve the trial.
+
+### Phase A — read-only checks (paste into Termux, top to bottom)
+
+```sh
+# A1. One-time setup (skip if already done)
+pkg update && pkg install -y python git
+termux-setup-storage          # grant the Android permission when prompted
+
+# A2. What does ~/storage really look like? (read-only)
+ls -la ~/storage
+#    Expect: symlinks shared -> /storage/emulated/0 (or similar),
+#    plus documents/dcim/downloads/music/... aliases
+readlink ~/storage/shared
+readlink ~/storage/dcim ~/storage/downloads
+
+# A3. The tool, from the public repo, at the release commit
+cd ~
+rm -rf android-storage-audit-check && git clone https://github.com/Manash07Bhoi/StorageLens.git android-storage-audit-check
+cd android-storage-audit-check
+git rev-parse --short HEAD     # v2.2.0 release commit
+python3 storage_audit.py --version
+#    Expect: Android Storage Audit 2.2.0 (schema 3)
+
+# A4. Full test suite ON the phone (uses synthetic fixtures only)
+python3 -m unittest discover -s tests
+#    Expect: Ran 201 tests — OK
+
+# A5. Environment + shared-storage preflight (read-only)
+python3 storage_audit.py check --root ~/storage/shared
+
+# A6. The documented alias MUST validate now (v2.2.0 fix).
+#     This builds a DRAFT plan ONLY — nothing is moved, copied or deleted.
+python3 storage_audit.py organize-plan --scope ~/storage/shared
+#    Expect: exit 2, "refusing to organize the entire shared-storage root"
+python3 storage_audit.py organize-plan --scope ~/storage/shared/Android
+#    Expect: exit 2, protected_android reason, NO plan created
+python3 storage_audit.py organize-plan --scope ~/storage/shared/Download
+#    Expect on success: "Organization plan #N created (DRAFT" and
+#    "Eligible files" printed. DRAFT plans change nothing.
+#    Inspect it safely:
+python3 storage_audit.py organize-show --plan-id <N>
+#    Delete the draft without anything happening:
+python3 storage_audit.py organize-cancel --plan-id <N>
+
+# A7. If you have a custom folder of YOUR OWN that you would one day want to
+#     organize, see what the tool says today (read-only):
+python3 storage_audit.py organize-plan --scope "$HOME/storage/shared/Some custom folder"
+#    Expect: exit 2, "not a recognized personal folder" — visibility is
+#    not ownership. (Then stop. Do not register anything yet.)
+
+# A8. Read-only inventory scan + report of shared storage (no writes outside
+#     Termux-private storage; safe to run)
+python3 storage_audit.py scan --root ~/storage/shared
+python3 storage_audit.py report --latest
+```
+
+Paste the full terminal output of A2–A8 into the conversation for review.
+Especially useful: the exact `readlink` results and the A5/A6 outputs.
+
+### Phase B — disposable end-to-end trial (ONLY after you approve)
+
+Creates `~/storage/shared/StorageLens_Disposable_Test` with synthetic files,
+runs the whole plan→preview→approve→apply→undo cycle on THAT FOLDER ONLY,
+then leaves cleanup to you:
+
+```sh
+# B1. Synthetic corpus (only new files; your existing data untouched)
+T=~/storage/shared/StorageLens_Disposable_Test
+mkdir -p "$T/Documents" "$T/Pictures"
+printf 'hello'  > "$T/Documents/notes.txt"
+printf 'a,b\n1,2\n' > "$T/Documents/data.csv"
+printf 'img'    > "$T/Pictures/photo1.jpg"
+printf 'img'    > "$T/Pictures/photo2.jpg"
+printf 'secret' > "$T/Android/data/nested_should_not_exist" 2>/dev/null || \
+  { mkdir -p "$T/Android/data" && printf 'secret' > "$T/Android/data/nested_should_not_exist"; }
+#    (The Android/child above must NEVER appear in the plan — verify in B3.)
+
+# B2. Register the custom folder explicitly (interactive confirmation)
+python3 storage_audit.py organize-register-scope --scope "$T" --note "device trial"
+#    (re-type the canonical path when prompted; this writes ONLY to
+#     Termux-private storage: $XDG_DATA_HOME/android-storage-audit/scope_registry.json)
+
+# B3. Plan + preview; CONFIRM the Android/ child is excluded and eligible>0
+python3 storage_audit.py organize-plan --scope "$T" --action copy-keep
+#    Expect: eligible 4, excluded >=1 (Android/nested_should_not_exist),
+#    operations 4, policy org-scope-2
+python3 storage_audit.py organize-preview --plan-id <N>
+
+# B4. Approve + apply (copy-keep — NOTHING is deleted anywhere)
+python3 storage_audit.py organize-approve --plan-id <N>     # type APPROVE
+python3 storage_audit.py organize-apply --plan-id <N>
+
+# B5. Verify: copies exist under <T>/<Category>/…; originals still present
+ls -R "$T"
+
+# B6. Undo one operation (optional; needs --approve-delete)
+python3 storage_audit.py organize-undo --operation-id <OP_ID> --approve-delete
+
+# B7. Revoke the registration; the folder is unselectable again
+python3 storage_audit.py organize-unregister-scope --scope "$T"
+python3 storage_audit.py organize-plan --scope "$T"
+#    Expect: exit 2 (not registered anymore)
+```
+
+Cleanup, when you are fully satisfied and have your own copy of the evidence:
+
+```sh
+rm -rf ~/storage/shared/StorageLens_Disposable_Test   # YOUR explicit call
+```
+
+### What this trial does NOT authorize
+
+- No `--action move` on anything you care about.
+- No `organize-apply` on `Download`, `DCIM`, `Pictures`, `Documents` or any
+  real folder — not until you have reviewed Phase A **and** said so explicitly.
+- No organizing `Android/`, no registering system/app-private/Termux-private
+  locations (the tool refuses them; do not try to work around it).
+- The on-device behaviour of the FUSE-backed `Android/data` and the real
+  `~/storage` alias targets remains **NOT TESTED** until YOU run these steps.

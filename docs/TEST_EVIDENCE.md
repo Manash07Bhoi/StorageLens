@@ -120,3 +120,34 @@ the mandatory ORGANIZATION_SCOPE_SECURITY_TESTS.md mapping); V1 suite
 
 **Never executed on a device.** org-scope-1 path rules hold regardless of FUSE
 behaviour; no claim of on-device verification is made.
+
+## V2.2.0 addendum (2026-11-23, executed on dev host; corrective release)
+
+Context: independent review of public v2.1.0 found three defects (canonical
+path propagation, Termux alias resolution, unknown-directory policy not
+enforced) and demanded re-verification. All commands below executed on the
+development host (Linux x86_64).
+
+| # | Command | Result |
+|---|---|---|
+| x1 | `python3 -m unittest discover -s tests` | **Ran 201 tests — OK** |
+| x2 | `python3 -m unittest tests.test_scope_security -v` | 21/21 PASS |
+| x3 | `python3 -m unittest tests.test_scope_hardening -v` | 41/41 PASS (28 initial + 13 branch-audit cases) |
+| x4 | `python3 -m unittest tests.test_cli -v` | 13/13 PASS (3 new: registration flow, prohibited registration, recognized folder) |
+| x5 | `python3 -m unittest tests.test_organizer -v` | 23/23 PASS (fixture now a CUSTOM folder name requiring explicit registration — exercises the real flow) |
+| x6 | `python3 -m compileall -q storage_audit tests` | clean |
+
+New coverage (tests/test_scope_hardening.py, 41 tests): canonical-path
+propagation (H01–H06), trusted Termux storage aliases (H07–H13), recognition
+vs. explicit registration (H14–H22), boundary/apply/undo branch audit
+(H23–H31), input fuzzing of the empty-path class (H32), CLI end-to-end
+registration flow in tests/test_cli.py (H33–H35).
+
+v2.2.0 test modules: V1 suite (113) + V2 engine (23) + scope security (21)
++ scope hardening (41) + CLI registration (3 of the 13 CLI tests) = **201**.
+
+Fresh PUBLIC clone verification: pending release-commit push; will be
+recorded in FINAL_AUDIT.md after the push (as v2.1.0 was). **Never executed on
+a device.** The Termux alias tests use a synthetic fixture reproducing
+`~/storage/<alias>`; the real FUSE layout on the user's phone is NOT tested.
+No claim of on-device verification is made.

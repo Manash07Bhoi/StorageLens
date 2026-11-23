@@ -1,6 +1,6 @@
 """Plan builder: selected user-owned folder → organization plan (no writes).
 
-Scope policy (org-scope-1) is mandatory and enforced here:
+Scope policy (org-scope-2) is mandatory and enforced here:
 
 * The user selects ONE personal folder (the organization scope). The scan is
   used only as provenance/inventory context — never as a source of files to
@@ -89,7 +89,7 @@ def build_plan(conn, scan_id, target_root, *, rule="by-category",
     """Create a DRAFT plan for one explicitly selected, user-owned folder.
 
     ``target_root`` is the organization scope: the only tree the plan may
-    touch. It must pass the org-scope-1 validation (see scope.py) — Android/,
+    touch. It must pass the org-scope-2 validation (see scope.py) — Android/,
     system, Termux-private, hidden, reserved and cross-boundary locations are
     rejected outright with ScopeRejected (a PlanError subclass).
 
@@ -102,7 +102,7 @@ def build_plan(conn, scan_id, target_root, *, rule="by-category",
     if action not in ("copy-keep", "move"):
         raise PlanError("action must be 'copy-keep' or 'move'")
 
-    # --- org-scope-1: target validation (default-deny) ---
+    # --- org-scope-2: target validation (default-deny) ---
     validation = validate_scope(target_root, storage_root=storage_root)
     if not validation["ok"]:
         raise ScopeRejected(validation)

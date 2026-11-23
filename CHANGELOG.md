@@ -4,6 +4,91 @@ All notable changes to Android Storage Audit are recorded here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] — 2026-11-23
+
+Corrective release for the 2026-11-23 independent review of v2.1.0.
+v2.1.0 was found NOT acceptable in that review; v2.2.0 fixes the identified
+defects. **v2.2.0 is host-validated only. It has NOT been validated on a
+physical Android device, and Android/ or any other prohibited location can
+never be organized — including after this release. On-device trial must use
+a disposable test folder first (see `docs/FINAL_AUDIT.md`).**
+
+### Fixed (org-scope-2)
+
+- **Canonical-path propagation bug in `validate_scope()`** — the nested
+  `validation()` closure read `locals().get("canonical", path)`, which only
+  sees its own locals; the enclosing function's `canonical` was invisible, so
+  the raw (possibly unnormalized: `a/../b`, `~`, double slashes, trailing
+  slash, relative) argument was stored as `canonical` in the returned
+  validation and persisted by the planner into `organization_plans`
+  (`target_root`, `scope_canonical`, `scope_validation_json`). Fixed:
+  `canonical` is computed once in the enclosing scope and passed explicitly;
+  regression tests cover dot-dot inputs, expanded-home `~` inputs, double
+  slashes, relative inputs, already-canonical inputs, and the nonexistent-path
+  failure branch.
+- **Termux `~/storage/<alias>` layout rejected by the blanket symlink ban.**
+  `termux-setup-storage` exposes shared storage through symlinks under
+  `~/storage`; the old `_symlink_escape()` refused every symlink component,
+  making the documented `organize-plan --scope ~/storage/shared/Download`
+  selection impossible. Fixed with a strict trusted-alias resolution:
+  the alias must be a documented name (`shared`, `downloads`, `dcim`,
+  `documents`, `music`, `movies`, `ringtones`, `alarms`, `notifications`,
+  `podcasts`, `audiopodcasts`, `audiobooks`) AND a symlink (or plain dir)
+  whose realpath is the permitted shared-storage root or inside it; the
+  permitted root must be determinable; the final canonical destination is
+  re-validated like any other selection (component policy, protected
+  prefixes, boundary checks all still apply). Anything else under
+  `~/storage`, an alias pointing outside the shared root, or an undocumented
+  name is refused. Arbitrary symlinks and symlinks below the resolved root
+  remain rejected at every level.
+
+### Security (the actual unknown-directory policy, now enforced)
+
+- **Visibility is not ownership.** A visible folder was previously accepted
+  merely because it was not hidden and not under Android/ or system
+  prefixes. Fixed: only a conservative allowlist of recognized personal
+  folders (Download/Downloads, Documents, Pictures, Movies, Music,
+  Ringtones, Alarms, Notifications, DCIM, Recordings, Screenshots, Podcasts,
+  Audiopodcasts, Audiobooks, Bluetooth — case-insensitive, as the immediate
+  child of shared storage or as the selection basename on a dev host)
+  validates out of the box. ANY other visible folder is rejected with
+  `recognized_personal`.
+- **Explicit registration for custom user-owned folders.** New CLI commands:
+  `organize-register-scope --scope FOLDER [--note TEXT] [--yes]` (requires
+  interactive re-typing of the canonical path, or `--yes`; validates every
+  safety check first), `organize-unregister-scope --scope FOLDER`,
+  `organize-scopes` (list). The registry lives at
+  `${XDG_DATA_HOME:-~/.config}/android-storage-audit/scope_registry.json`
+  (mode 0600, atomic writes) on this device only and stores canonical paths.
+- **Registration is not an override.** Android/, system, application-private,
+  Termux-private, hidden, reserved and cross-boundary locations can never be
+  registered — `register_scope()` runs full prohibited-class validation and
+  raises before writing anything. Registration only ever clears the
+  "unknown folder" check for the exact folder the user selects.
+- **Registry is fail-closed.** An unreadable/corrupt registry fails
+  validation for every custom folder (recognized personal folders are
+  unaffected — recognition does not depend on the registry). Registry
+  revocation invalidates pending plans at apply and at undo time
+  (`revalidate_plan_scope()`), journalled as `scope_revalidation_failed`.
+- **No filesystem changes, no plan rows on rejection** — the recognition
+  check runs before any plan row is written; tests assert both.
+
+### Changed
+
+- Scope policy version: `org-scope-1` → `org-scope-2` (schema stays v3;
+  registry is a separate file). Plans created under org-scope-1 are still
+  revalidated at apply/undo time under the CURRENT policy; a policy-version
+  mismatch is journalled (`scope_policy_mismatch`) but never widens a scope.
+- Refusal message now names the registration path.
+- Documentation synchronized: README, ORGANIZATION_SCOPE_SECURITY_TESTS.md,
+  acceptance matrix, gap register, test evidence (201 tests).
+
+### Notes
+
+- No new on-device validation has been performed for this release; the
+  Termux symlink handling is verified against a synthetic layout only.
+- GitHub repository remains public; private scan data was not used.
+
 ## [2.1.0] — 2026-11-23
 
 ### Added (mandatory organization scope policy — org-scope-1)

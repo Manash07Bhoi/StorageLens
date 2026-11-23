@@ -15,7 +15,7 @@ Invariants (every one is enforced here and covered by tests):
 7. Every step is journalled in organization_events.
 8. Interrupted operations are marked ``interrupted`` on the next call —
    never silently treated as complete.
-9. org-scope-1: before ANY operation is executed, the plan's scope is
+9. org-scope-2: before ANY operation is executed, the plan's scope is
    revalidated from scratch (existence, directory-ness, symlink escape,
    Android/hidden/reserved components, mount boundary, too-broad roots). If
    scope validity changed since the plan was approved, NOTHING is executed.
@@ -87,7 +87,7 @@ def reconcile_interrupted(conn, plan_id=None):
 
 
 def revalidate_plan_scope(conn, plan):
-    """Re-run org-scope-1 on the plan's target. Returns validation dict.
+    """Re-run org-scope-2 on the plan's target. Returns validation dict.
 
     Raises ExecutionError when the approved scope no longer validates — the
     apply/undo must then refuse to touch anything. The refusal is journalled
@@ -187,7 +187,7 @@ def apply_plan(conn, plan_id, *, acknowledge_source_removal=False,
             "plan {} is '{}' — approve it first with `organize-approve`".format(
                 plan_id, plan["status"]))
 
-    # --- org-scope-1: full scope revalidation BEFORE any execution ---
+    # --- org-scope-2: full scope revalidation BEFORE any execution ---
     revalidate_plan_scope(conn, plan)
     if conn.execute(
             "SELECT name FROM pragma_table_info('organization_plans')"
@@ -291,7 +291,7 @@ def apply_plan(conn, plan_id, *, acknowledge_source_removal=False,
             # --- re-validation at execution time (TOCTOU defence) ---
             ok_path, path_reason = op_path_check(src, dst, target_root)
             if not ok_path:
-                fail("org-scope-1: {}".format(path_reason))
+                fail("org-scope-2: {}".format(path_reason))
                 continue
             if not _dest_contained(dst, target_root):
                 fail("destination escapes target root; refused")
@@ -400,7 +400,7 @@ def undo_operation(conn, operation_id, *, approve_delete_copy=False):
     src, dst = op["source_abs"], op["dest_abs"]
     plan = conn.execute("SELECT * FROM organization_plans WHERE id = ?",
                         (op["plan_id"],)).fetchone()
-    # org-scope-1: recovery never widens the approved scope
+    # org-scope-2: recovery never widens the approved scope
     revalidate_plan_scope(conn, plan)
     ok_path, path_reason = op_path_check(dst, src, plan["target_root"])
     if not ok_path:

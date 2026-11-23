@@ -17,7 +17,7 @@ No phase is skipped, no phase is hidden behind a single button.
 ## M1 scope (implemented, v2.0.0)
 | Capability | Implementation |
 |---|---|
-| Organization plan builder | `organize-plan` — deterministic `by-category` rule applied to a fresh walk of ONE explicitly selected, user-owned folder (Images/Videos/Audio/Documents/Archives/Packages/Databases/Code/Fonts/Backups/System/Unsorted/Other) preserving source directory structure under that folder; scope policy org-scope-1 is mandatory (see V2_OPERATION_SAFETY.md G11–G13 and ORGANIZATION_SCOPE_SECURITY_TESTS.md) |
+| Organization plan builder | `organize-plan` — deterministic `by-category` rule applied to a fresh walk of ONE explicitly selected, user-owned folder (Images/Videos/Audio/Documents/Archives/Packages/Databases/Code/Fonts/Backups/System/Unsorted/Other) preserving source directory structure under that folder; scope policy org-scope-2 is mandatory (see V2_OPERATION_SAFETY.md G11–G13 and ORGANIZATION_SCOPE_SECURITY_TESTS.md) |
 | Plan preview | `organize-preview` — fully offline, premium dark HTML; embedded JSON rows; search/filter/pagination; per-op status; conflict exclusion visible; approval instructions inline |
 | Explicit approval gate | `organize-approve` — interactive `APPROVE` confirmation or `--yes`; plan becomes `approved`; nothing executes before this |
 | Safe execution | `organize-apply` — re-validates every source/destination at execution time; copies in 1 MiB chunks; fsync; verifies (size+mtime, or SHA-256 with `--hash-verify` at plan time); **copy-keep is the default**; sources are removed only for `move` plans AND only after each destination verifies AND only with `--acknowledge-source-removal` |

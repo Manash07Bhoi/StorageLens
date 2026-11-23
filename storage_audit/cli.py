@@ -60,7 +60,7 @@ def build_parser():
                     "V2 'organize-*' commands change files ONLY after an explicit, "
                     "logged approval, never overwrite existing files, and NEVER touch "
                     "Android/, system, application-private, Termux-private, hidden or "
-                    "reserved locations (policy org-scope-1). No network access.",
+                    "reserved locations (policy org-scope-2). No network access.",
         epilog="Environment variables: STORAGE_AUDIT_ROOT (default scan root), "
                "XDG_DATA_HOME (state directory base).")
     parser.add_argument("--version", action="version",
@@ -164,6 +164,32 @@ def build_parser():
 
     p_ocan = sub.add_parser("organize-cancel", help="V2: cancel a draft/approved plan")
     p_ocan.add_argument("--plan-id", type=int, required=True)
+
+    p_reg = sub.add_parser(
+        "organize-register-scope",
+        help="V2: explicitly register a CUSTOM user-owned folder so it can be "
+             "selected for organization (recognized personal folders need no "
+             "registration). Prohibited locations can never be registered.")
+    p_reg.add_argument("--scope", "--path", dest="target", required=True,
+                       help="The custom folder to register (e.g. "
+                            "'~/storage/shared/My Study Stuff'). It must exist, "
+                            "pass every safety check, and NOT be a recognized "
+                            "personal folder or a prohibited location.")
+    p_reg.add_argument("--note", default="",
+                       help="Optional note recorded with the registration "
+                            "(stored on this device only)")
+    p_reg.add_argument("--yes", action="store_true",
+                       help="Skip the interactive confirmation (for scripts/tests). "
+                            "Without --yes you must re-type the canonical path.")
+
+    p_unreg = sub.add_parser(
+        "organize-unregister-scope",
+        help="V2: remove a folder from the custom-scope registry")
+    p_unreg.add_argument("--scope", "--path", dest="target", required=True)
+
+    p_listscopes = sub.add_parser(
+        "organize-scopes",
+        help="V2: list explicitly registered custom organization scopes")
 
     parser.set_defaults(command=None)
     return parser
@@ -487,8 +513,11 @@ def cmd_organize_plan(args, state_dir, db_path, output_dir):
               "the permitted user-data scope.", file=sys.stderr)
         for reason in exc.validation["reasons"]:
             print("  - {}".format(reason), file=sys.stderr)
-        print("Select a personal folder instead (e.g. Documents, Download, "
-              "Pictures). There is no override.", file=sys.stderr)
+        print("Select a recognized personal folder (e.g. Documents, Download, "
+              "Pictures, DCIM, Music), or explicitly register a custom folder "
+              "you own with `organize-register-scope --scope <folder>`. "
+              "Prohibited locations can never be registered. There is no override.",
+              file=sys.stderr)
         return EXIT_USAGE
     except Exception as exc:
         print("Could not create plan: {}".format(exc), file=sys.stderr)
@@ -676,6 +705,98 @@ def cmd_organize_cancel(args, state_dir, db_path, output_dir):
     finally:
         conn.close()
 
+def cmd_organize_register_scope(args, state_dir, db_path, output_dir):
+    from storage_audit.organizer import scope as scope_mod
+    try:
+        verdict = scope_mod.validate_scope(args.target, _allow_unrecognized=True)
+    except Exception as exc:  # never crash on malformed input
+        verdict = {"ok": False, "canonical": "",
+                   "reasons": ["validation_error: {}".format(exc)],
+                   "checks": [], "policy_version": scope_mod.SCOPE_POLICY_VERSION}
+    # Registration is ONLY about the "unknown folder" check. Every safety
+    # check must pass first; otherwise this raises with the reasons.
+    prohibited = [r for r in verdict["reasons"]]
+    if prohibited:
+        print("Cannot register this folder — it fails organization scope policy:",
+              file=sys.stderr)
+        for reason in prohibited:
+            print("  - {}".format(reason), file=sys.stderr)
+        print("Android/, system, application-private, Termux-private, hidden, "
+              "reserved and cross-boundary locations can never be registered. "
+              "There is no override.", file=sys.stderr)
+        return EXIT_USAGE
+    canonical = verdict["canonical"]
+    selection = scope_mod._selection_name(
+        canonical, scope_mod.find_permitted_storage_root())
+    if selection and selection in scope_mod.RECOGNIZED_PERSONAL_FOLDERS:
+        print("{!r} is already a recognized personal folder — registration is "
+              "not needed.".format(canonical))
+        return EXIT_OK
+    if not args.yes:
+        if not sys.stdin.isatty():
+            print("Refusing to register without confirmation: re-run with --yes "
+                  "in a non-interactive shell, or confirm interactively.",
+                  file=sys.stderr)
+            return EXIT_USAGE
+        print("You are registering a CUSTOM folder for organization:")
+        print("  {}".format(canonical))
+        print("Only regular files inside it will ever be eligible; Android/, "
+              "system, hidden and reserved content inside it stays excluded.")
+        typed = input("Type the canonical path to confirm: ").strip()
+        if typed != canonical:
+            print("Confirmation did not match — not registered.", file=sys.stderr)
+            return EXIT_USAGE
+    try:
+        canonical, created, message = scope_mod.register_scope(
+            canonical, note=args.note)
+    except scope_mod.ScopeRejected as exc:
+        print("Registration refused:", file=sys.stderr)
+        for reason in exc.validation["reasons"]:
+            print("  - {}".format(reason), file=sys.stderr)
+        return EXIT_USAGE
+    print(("Custom scope registered: {}" if created
+           else "Custom scope already registered: {}").format(canonical))
+    print("  Note:    {}".format(args.note or "—"))
+    print("  Registry: {}".format(scope_mod.default_registry_path()))
+    print("  This only unlocks THIS folder; Android/, system, Termux-private, "
+          "hidden and reserved content is still default-deny inside it.")
+    return EXIT_OK
+
+
+def cmd_organize_unregister_scope(args, state_dir, db_path, output_dir):
+    from storage_audit.organizer import scope as scope_mod
+    try:
+        removed = scope_mod.unregister_scope(args.target)
+    except scope_mod.ScopeRejected as exc:
+        print("Unregister refused: {}".format(
+            "; ".join(exc.validation["reasons"])), file=sys.stderr)
+        return EXIT_USAGE
+    if removed:
+        print("Unregistered: {}".format(
+            os.path.realpath(os.path.expanduser(args.target))))
+    else:
+        print("Not in the registry: {}".format(
+            os.path.realpath(os.path.expanduser(args.target))))
+    return EXIT_OK
+
+
+def cmd_organize_scopes(args, state_dir, db_path, output_dir):
+    from storage_audit.organizer import scope as scope_mod
+    scopes, err = scope_mod.list_registered_scopes()
+    if err:
+        print("Cannot read scope registry: {}".format(err), file=sys.stderr)
+        return EXIT_USAGE
+    if not scopes:
+        print("No custom scopes registered. (Recognized personal folders — "
+              "Download, Documents, Pictures, DCIM, Music, Movies, … — need "
+              "no registration.)")
+        return EXIT_OK
+    print("Registered custom organization scopes:")
+    for s in scopes:
+        print("  {}".format(s))
+    return EXIT_OK
+
+
 def cmd_list_runs(args, state_dir, db_path, output_dir):
     if not os.path.exists(db_path):
         print("No database yet at {}".format(db_path))
@@ -754,6 +875,9 @@ _COMMANDS = {
     "list-runs": cmd_list_runs,
     "show-run": cmd_show_run,
     "organize-plan": cmd_organize_plan,
+    "organize-register-scope": cmd_organize_register_scope,
+    "organize-unregister-scope": cmd_organize_unregister_scope,
+    "organize-scopes": cmd_organize_scopes,
     "organize-preview": cmd_organize_preview,
     "organize-approve": cmd_organize_approve,
     "organize-apply": cmd_organize_apply,

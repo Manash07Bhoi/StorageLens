@@ -25,16 +25,20 @@ completed ─(undo)─► rolled_back
 Invalid: conflict→completed, failed→completed, interrupted→completed (manual
 review required), rolled_back→anything.
 
-## Scope gates (v2.1.0)
-- **Plan:** created only for a scope that passes `validate_scope()`; otherwise
-  `ScopeRejected` and NO plan exists. Prohibited content is excluded during
-  the walk and recorded as exclusions on the plan.
+## Scope gates (v2.2.0)
+- **Plan:** created only for a scope that passes `validate_scope()` — which
+  now also requires a recognized personal folder or one explicitly registered
+  on this device (org-scope-2); otherwise `ScopeRejected` and NO plan exists
+  and NO plan row is written. Prohibited content is excluded during the walk
+  and recorded as exclusions on the plan.
 - **Approve:** approval never widens scope; it only authorizes the recorded,
   already-validated scope and the planned operations.
 - **Apply:** scope revalidated from scratch before the first operation;
   failure ⇒ NOTHING executes and the refusal is journalled
   (`scope_revalidation_failed`). Each operation revalidates its own paths.
 - **Undo:** scope revalidated; recovery never restores outside the scope.
+- **Canonical integrity:** plans store the canonical (realpath) scope; a raw,
+  unnormalized argv can never enter the manifest (v2.2.0 fix).
 
 ## Approval rules
 - `approve_plan` accepts only draft|ready_for_review; conflicts counted and

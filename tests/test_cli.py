@@ -47,7 +47,7 @@ class TestHelpAndVersion(CliCase):
     def test_version(self):
         result = self.run_cli("--version")
         self.assertEqual(result.returncode, 0)
-        self.assertIn("2.1.0", result.stdout)
+        self.assertIn("2.2.0", result.stdout)
 
     def test_no_command_prints_help(self):
         result = self.run_cli()
@@ -119,3 +119,77 @@ class TestEnvironmentRootOverride(CliCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCliScopeRegistration(CliCase):
+    """End-to-end CLI flow for org-scope-2 custom-folder registration."""
+
+    def _xdg(self):
+        return os.path.join(self.tmp, "xdg")
+
+    def test_custom_folder_registration_flow(self):
+        custom = os.path.join(self.tmp, "My Study Files")
+        os.makedirs(custom)
+        with open(os.path.join(custom, "chapter1.txt"), "w") as fh:
+            fh.write("hello")
+        env = {"XDG_DATA_HOME": self._xdg()}
+
+        # scan once (provenance only)
+        result = self.run_cli("scan", "--root", self.fixture,
+                              "--batch-size", "50", env=env)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+        # unregistered custom folder: plan refused (exit 2)
+        result = self.run_cli("organize-plan", "--scope", custom, env=env)
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("not a recognized personal folder", result.stderr)
+        self.assertIn("organize-register-scope", result.stderr)
+
+        # registration requires explicit confirmation (no --yes, no tty)
+        result = self.run_cli("organize-register-scope", "--scope", custom,
+                              env=env)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("--yes", result.stderr)
+
+        # explicit confirmation registers it
+        result = self.run_cli("organize-register-scope", "--scope", custom,
+                              "--note", "my own folder", "--yes", env=env)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("registered", result.stdout)
+
+        # now visible in the registry listing
+        result = self.run_cli("organize-scopes", env=env)
+        self.assertEqual(result.returncode, 0)
+        self.assertIn(os.path.realpath(custom), result.stdout)
+
+        # and a plan can be built
+        result = self.run_cli("organize-plan", "--scope", custom, env=env)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+        # unregistering revokes it
+        result = self.run_cli("organize-unregister-scope", "--scope", custom,
+                              env=env)
+        self.assertEqual(result.returncode, 0)
+        result = self.run_cli("organize-plan", "--scope", custom, env=env)
+        self.assertEqual(result.returncode, 2)
+
+    def test_registration_of_prohibited_folder_refused(self):
+        android = os.path.join(self.fixture, "Android", "data")
+        os.makedirs(android, exist_ok=True)
+        env = {"XDG_DATA_HOME": self._xdg()}
+        result = self.run_cli("organize-register-scope", "--scope", android,
+                              "--yes", env=env)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("protected_android", result.stderr)
+
+    def test_recognized_folder_needs_no_registration(self):
+        documents = os.path.join(self.fixture, "Documents")
+        os.makedirs(documents, exist_ok=True)
+        with open(os.path.join(documents, "note.txt"), "w") as fh:
+            fh.write("keep")
+        env = {"XDG_DATA_HOME": self._xdg()}
+        result = self.run_cli("scan", "--root", self.fixture,
+                              "--batch-size", "50", env=env)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        result = self.run_cli("organize-plan", "--scope", documents, env=env)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
