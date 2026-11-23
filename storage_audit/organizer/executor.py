@@ -180,11 +180,15 @@ def apply_plan(conn, plan_id, *, acknowledge_source_removal=False,
     except OSError as exc:
         raise ExecutionError(
             "cannot measure free space near {!r}: {}".format(target_root, exc))
-    needed = sum(int(o["size_bytes"] or 0) for o in pending) + 1024 * 1024 * len(pending)
+    payload = sum(int(o["size_bytes"] or 0) for o in pending)
+    # Logical bytes are the upper bound for regular files (sparse files use
+    # less); add fixed headroom, never per-file slack.
+    needed = payload + 64 * 1024 * 1024
     if free < needed:
         raise ExecutionError(
-            "insufficient free space on target: need ~{} bytes, have {}".format(
-                needed, free))
+            "insufficient free space on target: payload {} bytes + 64 MiB "
+            "headroom exceeds {} available bytes at {!r}".format(
+                payload, free, probe))
 
     with conn:
         conn.execute(
